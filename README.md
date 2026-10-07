@@ -5,7 +5,7 @@ An enterprise-ready, robust RESTful Web API powering the Student Flea Market pla
 --------------------------------
 
 🚀 Tech Stack & Core Libraries
-- Runtime & Framework: .NET 10 Web API
+- Runtime & Framework: .NET 8 Web API
 - Database & Engine: PostgreSQL
 - ORM & Data Access: Entity Framework Core 8
 - Authentication & Security: JWT (JSON Web Tokens) with Refresh Token rotation, ASP.NET Core Identity / Password Hashing
