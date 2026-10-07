@@ -1,3 +1,5 @@
+using StudentFleaMarket.Domain.Enums;
+
 namespace StudentFleaMarket.Domain.Entities;
 
 public class ExchangeRequest
@@ -26,3 +28,4 @@ public class ExchangeRequest
 
     public Item? OfferedItem { get; set; }
 }
+

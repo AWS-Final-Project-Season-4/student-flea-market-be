@@ -1,3 +1,7 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using StudentFleaMarket.Domain.Entities;
+
 public class ConversationMemberConfiguration
     : IEntityTypeConfiguration<ConversationMember>
 {

@@ -1,3 +1,5 @@
+using StudentFleaMarket.Domain.Enums;
+
 namespace StudentFleaMarket.Domain.Entities;
 
 public class Review
@@ -26,3 +28,4 @@ public class Review
 
     public Item Item { get; set; } = null!;
 }
+

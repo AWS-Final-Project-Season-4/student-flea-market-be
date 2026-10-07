@@ -1,3 +1,5 @@
+using StudentFleaMarket.Domain.Enums;
+
 namespace StudentFleaMarket.Domain.Entities;
 
 public class Transaction
@@ -37,3 +39,4 @@ public class Transaction
     public ICollection<Review> Reviews { get; set; }
         = new List<Review>();
 }
+

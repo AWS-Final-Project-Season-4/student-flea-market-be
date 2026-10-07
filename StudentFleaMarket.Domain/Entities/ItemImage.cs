@@ -1,3 +1,5 @@
+using StudentFleaMarket.Domain.Enums;
+
 namespace StudentFleaMarket.Domain.Entities;
 
 public class ItemImage
@@ -14,3 +16,4 @@ public class ItemImage
 
     public Item Item { get; set; } = null!;
 }
+

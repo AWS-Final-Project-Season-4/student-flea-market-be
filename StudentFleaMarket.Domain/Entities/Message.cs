@@ -1,3 +1,5 @@
+using StudentFleaMarket.Domain.Enums;
+
 namespace StudentFleaMarket.Domain.Entities;
 
 public class Message
@@ -17,3 +19,4 @@ public class Message
     public Conversation Conversation { get; set; } = null!;
     public ApplicationUser Sender { get; set; } = null!;
 }
+

@@ -1,3 +1,5 @@
+using StudentFleaMarket.Domain.Enums;
+
 namespace StudentFleaMarket.Domain.Entities;
 
 public class ConversationMember
@@ -11,3 +13,4 @@ public class ConversationMember
     public Conversation Conversation { get; set; } = null!;
     public ApplicationUser User { get; set; } = null!;
 }
+

@@ -1,3 +1,5 @@
+using StudentFleaMarket.Domain.Enums;
+
 namespace StudentFleaMarket.Domain.Entities;
 
 using Microsoft.AspNetCore.Identity;
@@ -15,3 +17,4 @@ public class ApplicationUser : IdentityUser<Guid>
 
     public ICollection<Item> Items { get; set; } = new List<Item>();
 }
+

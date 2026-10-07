@@ -1,3 +1,5 @@
+using StudentFleaMarket.Domain.Enums;
+
 namespace StudentFleaMarket.Domain.Entities;
 
 public class Report
@@ -28,3 +30,4 @@ public class Report
 
     public Item? Item { get; set; }
 }
+

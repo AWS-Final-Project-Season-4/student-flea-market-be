@@ -1,3 +1,5 @@
+using StudentFleaMarket.Domain.Enums;
+
 namespace StudentFleaMarket.Domain.Entities;
 
 public class Payment
@@ -24,3 +26,4 @@ public class Payment
 
     public Transaction Transaction { get; set; } = null!;
 }
+

@@ -1,3 +1,5 @@
+using StudentFleaMarket.Domain.Enums;
+
 namespace StudentFleaMarket.Domain.Entities;
 
 public class Item
@@ -26,3 +28,4 @@ public class Item
 
     public ICollection<ItemImage> Images { get; set; } = new List<ItemImage>();
 }
+

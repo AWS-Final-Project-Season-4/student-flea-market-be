@@ -1,3 +1,5 @@
+using StudentFleaMarket.Domain.Enums;
+
 namespace StudentFleaMarket.Domain.Entities;
 
 public class Conversation
@@ -17,3 +19,4 @@ public class Conversation
     public ICollection<Message> Messages { get; set; }
         = new List<Message>();
 }
+

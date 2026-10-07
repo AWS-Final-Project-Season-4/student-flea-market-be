@@ -1,3 +1,5 @@
+using StudentFleaMarket.Domain.Enums;
+
 namespace StudentFleaMarket.Domain.Entities;
 
 public class Favorite
@@ -10,3 +12,4 @@ public class Favorite
     public ApplicationUser User { get; set; } = null!;
     public Item Item { get; set; } = null!;
 }
+

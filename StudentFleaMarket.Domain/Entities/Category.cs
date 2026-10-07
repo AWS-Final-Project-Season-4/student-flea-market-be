@@ -1,3 +1,5 @@
+using StudentFleaMarket.Domain.Enums;
+
 namespace StudentFleaMarket.Domain.Entities;
 
 public class Category
@@ -14,3 +16,4 @@ public class Category
 
     public ICollection<Item> Items { get; set; } = new List<Item>();
 }
+
