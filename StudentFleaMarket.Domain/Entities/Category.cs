@@ -1,19 +1,14 @@
-using StudentFleaMarket.Domain.Enums;
-
 namespace StudentFleaMarket.Domain.Entities;
 
-public class Category
+public class Category 
 {
-    public Guid Id { get; set; }
-
+    public int Id { get; set; }
     public string Name { get; set; } = null!;
+    public string Slug { get; set; } = null!;
     public string? Description { get; set; }
+    public int Order { get; set; } = 0;
 
-    public bool IsActive { get; set; } = true;
-
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-
+    //Navigation Properties (Single-level, NO ParentId)
     public ICollection<Item> Items { get; set; } = new List<Item>();
 }
 
