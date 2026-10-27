@@ -79,9 +79,9 @@ Migration `AddAuthFeature` tạo bảng `RefreshTokens`, `VerificationCodes`, th
 | POST | `/api/Auth/send-verification-code` | – | Gửi OTP xác thực email (hạn 10 phút) |
 | POST | `/api/Auth/resend-verification-code` | – | Gửi lại OTP |
 | POST | `/api/Auth/verify-email` | – | Xác thực email bằng OTP 6 chữ số |
-| GET | `/api/Profile` | ✅ | Lấy hồ sơ sinh viên |
-| PUT | `/api/Profile` | ✅ | Cập nhật avatar, SĐT, trường, mã SV, khu vực, ký túc xá |
-| POST | `/api/Profile/change-password` | ✅ | Đổi mật khẩu (thu hồi toàn bộ phiên đăng nhập) |
+| GET | `/api/Profile` | ✅ User/Admin | Lấy hồ sơ **của chính mình** (lấy `userId` từ token) |
+| PUT | `/api/Profile` | ✅ User/Admin | Cập nhật avatar, SĐT, trường, mã SV, khu vực, ký túc xá |
+| POST | `/api/Profile/change-password` | ✅ User/Admin | Đổi mật khẩu (thu hồi toàn bộ phiên đăng nhập) |
 | POST | `/api/ServiceAccounts` | ✅ Admin | Tạo tài khoản dịch vụ AI → sinh API key (hiển thị 1 lần) |
 | POST | `/api/ServiceAccounts/{id}/revoke` | ✅ Admin | Thu hồi API key của dịch vụ AI |
 
@@ -217,7 +217,11 @@ Authorization: Bearer <accessToken>
 | 401 | `INVALID_CREDENTIALS` | Sai email / username / mật khẩu |
 | 401 | `INVALID_API_KEY` | API key của dịch vụ AI không hợp lệ / hết hạn / đã thu hồi |
 | 401 | `REFRESH_TOKEN_REVOKED` | Refresh token đã bị thu hồi / phát hiện dùng lại |
+| 401 | `UNAUTHORIZED` | Thiếu token, token không hợp lệ, hoặc chưa đăng nhập |
+| 401 | `TOKEN_EXPIRED` | Access token đã hết hạn — cần đăng nhập lại |
+| 401 | `INVALID_TOKEN_SIGNATURE` / `INVALID_TOKEN_AUDIENCE` / `INVALID_TOKEN_ISSUER` | Token sai chữ ký / sai issuer / sai audience |
 | 401 | `ACCOUNT_BANNED` / `ACCOUNT_INACTIVE` | Tài khoản bị khóa |
+| 403 | `FORBIDDEN` | Đã đăng nhập nhưng vai trò không được phép (ví dụ tài khoản AI gọi `/api/Profile`) |
 | 403 | `EMAIL_NOT_VERIFIED` | Chưa xác thực email — cần verify OTP trước khi đăng nhập |
 | 403 | `SERVICE_ACCOUNT_REQUIRES_API_KEY` | Tài khoản dịch vụ AI phải xác thực bằng API key |
 | 409 | `EMAIL_EXISTS` | Email đã đăng ký |
@@ -234,7 +238,24 @@ Authorization: Bearer <accessToken>
 - Response đăng nhập không lộ email nào tồn tại (thông báo chung).
 - **Đăng ký không cấp token**; **đăng nhập bị chặn (403 `EMAIL_NOT_VERIFIED`)** cho tới khi xác thực email qua OTP.
 - **Tài khoản dịch vụ AI** nằm ở bảng riêng `ServiceAccounts`, không có email/password; xác thực bằng header `X-Api-Key`; key có thể thu hồi và tự hết hạn.
+- **Hồ sơ là tài nguyên riêng tư (private):** `/api/Profile` yêu cầu đăng nhập (`[Authorize(Roles = "User, Admin")]`).
+  - `userId` **luôn lấy từ access token**, không nhận từ client → không thể xem/sửa hồ sơ người khác.
+  - Tài khoản dịch vụ AI (`AiService`, xác thực bằng API key) bị từ chối với **403 `FORBIDDEN`**.
+  - Gửi API key kèm request đã đăng nhập → JWT được ưu tiên, API key bị bỏ qua.
 - Swagger UI: http://localhost:&lt;port&gt;/swagger (Development) — nhấn **Authorize** để nhập token.
+
+> 💡 **Lỗi 401 khi dùng Swagger?** Hai nguyên nhân phổ biến nhất:
+>
+> **1. Dán sai token.** Trong ô Authorize chỉ dán **giá trị `accessToken`**, tuyệt đối:
+> - ❌ Không thêm chữ `Bearer` phía trước (Swagger tự thêm)
+> - ❌ Không dán nguyên cả JSON response của `/api/Auth/login`
+> - ❌ Không dán nhầm `refreshToken`
+>
+> Server ghi log lý do cụ thể trong console (`Token bi tu choi -> ...`), ví dụ `TOKEN_MALFORMED`, `INVALID_TOKEN_SIGNATURE`, `TOKEN_EXPIRED`.
+>
+> **2. `swagger.json` bị sai key của security requirement.** Khi đó Swagger UI **không gửi header `Authorization`** dù bạn đã Authorize thành công → 401 dù token hoàn toàn hợp lệ.
+> Kiểm tra nhanh: mở `/swagger/v1/swagger.json`, phần `"security"` cuối file phải là `"Bearer": []` — **không phải** `"Bearer#/components/securitySchemes/Bearer"`.
+> Nguyên nhân: `OpenApiSecuritySchemeReference(referenceId, hostDocument, externalResource)` — tham số thứ 3 là **externalResource**, truyền `"Bearer"` sẽ ghép thành `Bearer#/components/securitySchemes/Bearer`. Phải truyền `null`.
 
 ### 1.8 Tài khoản mặc định (seed)
 
