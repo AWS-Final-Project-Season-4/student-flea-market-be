@@ -1,9 +1,11 @@
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using StudentFleaMarket.API.Filters;
 using StudentFleaMarket.API.Middleware;
+using StudentFleaMarket.Application.Common;
 using StudentFleaMarket.Application.Common.Interfaces;
 using StudentFleaMarket.Infrastructure.DependencyInjection;
 using StudentFleaMarket.Infrastructure.Persistence;
@@ -69,6 +71,80 @@ builder.Services
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(30)
         };
+
+        // Trả body chuẩn ApiResponse thay vì body rỗng mặc định của JwtBearer.
+        // Áp dụng cho mọi endpoint [Authorize] (kể cả Profile).
+        options.Events = new JwtBearerEvents
+        {
+            OnAuthenticationFailed = context =>
+            {
+                // Ghi log lý do từ chối token để dễ chẩn đoán (401 do dán sai token).
+                // Dùng mã ASCII để hiển thị đúng trên mọi console (kể cả khi redirect).
+                var reason = context.Exception switch
+                {
+                    SecurityTokenExpiredException => "TOKEN_EXPIRED: token da het han.",
+                    SecurityTokenInvalidSignatureException => "INVALID_TOKEN_SIGNATURE: sai chu ky token (thuong do dan nham token hoac dan them tien to 'Bearer').",
+                    SecurityTokenInvalidAudienceException => "INVALID_TOKEN_AUDIENCE: sai audience cua token.",
+                    SecurityTokenInvalidIssuerException => "INVALID_TOKEN_ISSUER: sai issuer cua token.",
+                    SecurityTokenMalformedException => "TOKEN_MALFORMED: token sai dinh dang (thuong do dan nham refresh token hoac dan ca JSON response).",
+                    _ => $"AUTH_FAILED: {context.Exception.GetType().Name}."
+                };
+
+                var logger = context.HttpContext.RequestServices
+                    .GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("JwtAuth");
+
+                logger.LogWarning("Token bi tu choi -> {Reason}. Path={Path}",
+                    reason, context.HttpContext.Request.Path);
+
+                return Task.CompletedTask;
+            },
+            OnChallenge = async context =>
+            {
+                // Không ghi đè response nếu đã có nội dung (vd. middleware khác đã trả lỗi).
+                if (context.Response.HasStarted) return;
+
+                context.HandleResponse();
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/json; charset=utf-8";
+
+                var errorCode = context.AuthenticateFailure switch
+                {
+                    SecurityTokenExpiredException => "TOKEN_EXPIRED",
+                    SecurityTokenInvalidSignatureException => "INVALID_TOKEN_SIGNATURE",
+                    SecurityTokenInvalidAudienceException => "INVALID_TOKEN_AUDIENCE",
+                    SecurityTokenInvalidIssuerException => "INVALID_TOKEN_ISSUER",
+                    _ => "UNAUTHORIZED"
+                };
+
+                var message = context.AuthenticateFailure switch
+                {
+                    SecurityTokenExpiredException => "Token đã hết hạn. Vui lòng đăng nhập lại.",
+                    SecurityTokenInvalidSignatureException => "Token không hợp lệ. Hãy chắc chắn bạn dán đúng accessToken, KHÔNG thêm chữ 'Bearer' và không dán nguyên JSON response.",
+                    SecurityTokenMalformedException => "Token sai định dạng. Hãy dán đúng accessToken, KHÔNG dán refreshToken hay cả JSON response của /api/Auth/login.",
+                    _ => "Yêu cầu đăng nhập để truy cập tài nguyên này."
+                };
+
+                var body = ApiResponse.Fail(message, errorCode);
+                await context.Response.WriteAsync(JsonSerializer.Serialize(body, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                }));
+            },
+            OnForbidden = async context =>
+            {
+                if (context.Response.HasStarted) return;
+
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.ContentType = "application/json; charset=utf-8";
+
+                var body = ApiResponse.Fail("Bạn không có quyền thực hiện thao tác này.", "FORBIDDEN");
+                await context.Response.WriteAsync(JsonSerializer.Serialize(body, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                }));
+            }
+        };
     });
 
 builder.Services.AddAuthorization();
@@ -93,14 +169,24 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "bearer",
         BearerFormat = "JWT",
         In = Microsoft.OpenApi.ParameterLocation.Header,
-        Description = "Nhập token: {token}"
+        Description = "Dán accessToken lấy từ response của POST /api/Auth/login (trường accessToken). " +
+                      "CHỈ dán token, KHÔNG thêm chữ 'Bearer' và KHÔNG dán nguyên cả JSON response. " +
+                      "Swagger sẽ tự thêm tiền tố 'Bearer '."
     });
 
+    // Yêu cầu bảo mật toàn cục.
+    //
+    // LƯU Ý QUAN TRỌNG: tham số thứ 3 của OpenApiSecuritySchemeReference là
+    // "externalResource" (KHÔNG phải tên scheme). Truyền "Bearer" sẽ tạo ra
+    // key "Bearer#/components/securitySchemes/Bearer" trong swagger.json —
+    // Swagger UI không tìm thấy scheme tương ứng nên KHÔNG gửi header
+    // Authorization, dẫn tới 401 dù token hoàn toàn hợp lệ.
+    // Truyền null để key ra đúng "Bearer".
     options.AddSecurityRequirement(doc =>
     {
         var requirement = new Microsoft.OpenApi.OpenApiSecurityRequirement();
         requirement.Add(
-            new Microsoft.OpenApi.OpenApiSecuritySchemeReference("Bearer", doc, "Bearer"),
+            new Microsoft.OpenApi.OpenApiSecuritySchemeReference("Bearer", doc, null),
             new List<string>());
         return requirement;
     });
@@ -128,8 +214,11 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 app.UseAuthentication();
-app.UseAuthorization();
+// Xác thực tài khoản dịch vụ AI phải chạy SAU UseAuthentication (để đọc được JWT
+// đã xác thực) và TRƯỚC UseAuthorization (để principal do API key tạo ra được
+// framework kiểm tra khi áp dụng [Authorize]).
 app.UseMiddleware<ServiceAccountApiKeyMiddleware>();
+app.UseAuthorization();
 
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));

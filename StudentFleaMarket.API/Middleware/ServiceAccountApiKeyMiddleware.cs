@@ -31,6 +31,15 @@ public class ServiceAccountApiKeyMiddleware
             return;
         }
 
+        // Nếu request đã xác thực bằng JWT thì bỏ qua API key.
+        // Ưu tiên danh tính người dùng, tránh chặn nhầm khi client gửi kèm
+        // header X-Api-Key không hợp lệ (ví dụ frontend gửi thừa).
+        if (context.User.Identity?.IsAuthenticated == true)
+        {
+            await _next(context);
+            return;
+        }
+
         var apiKey = keyValues.ToString();
 
         var account = await serviceAccountService.AuthenticateAsync(apiKey, context.RequestAborted);

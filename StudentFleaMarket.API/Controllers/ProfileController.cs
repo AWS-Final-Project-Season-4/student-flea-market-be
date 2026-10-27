@@ -8,7 +8,9 @@ namespace StudentFleaMarket.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+// Chỉ tài khoản đã đăng nhập (sinh viên / admin) mới xem & cập nhật hồ sơ.
+// Tài khoản dịch vụ AI (role AiService, xác thực bằng API key) bị loại trừ.
+[Authorize(Roles = "User, Admin")]
 public class ProfileController : ControllerBase
 {
     private readonly IProfileService _profileService;
