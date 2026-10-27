@@ -155,6 +155,25 @@ builder.Services.AddControllers(options => options.Filters.AddService<Validation
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
+    // Gắn tag cho từng nhóm endpoint để Swagger hiển thị gọn gàng.
+    // "Items"            -> Tìm kiếm & Xem tin (public)
+    // "ItemsForSale"     -> Đăng bán & Quản lý tin của mình
+    options.TagActionsBy(api =>
+    {
+        var controllerName = (api.ActionDescriptor as Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor)
+            ?.ControllerTypeInfo.Name;
+
+        var tag = controllerName switch
+        {
+            "ItemsController" => "1. Tìm kiếm & Xem tin",
+            "ItemsForSaleController" => "2. Đăng bán & Quản lý tin",
+            "FavoritesController" => "3. Yêu thích (Wishlist)",
+            _ => controllerName ?? "Khác"
+        };
+
+        return new List<string> { tag };
+    });
+
     options.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo
     {
         Title = "Campus Thrift & Exchange Hub API",
@@ -235,6 +254,48 @@ if (!builder.Configuration.GetValue<bool>("SkipDatabaseSeed"))
     {
         app.Logger.LogError(ex, "Không seed được dữ liệu khởi tạo.");
         throw;
+    }
+
+    // ------------------------------------------- Backfill cột dẫn xuất (luôn chạy)
+    // Ví dụ: Items.TitleNormalized (bản bỏ dấu của Title) cho dữ liệu đã có sẵn.
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await DerivedColumnBackfiller.BackfillAsync(db);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Bỏ qua backfill cột dẫn xuất.");
+    }
+
+    // ---------------------------------------------------------- Seed DEMO data
+    // Dữ liệu mẫu để test nhanh: tìm kiếm, đăng bán, gỡ bán.
+    //
+    // Thứ tự ưu tiên:
+    //   1. SkipDemoDataSeed = true            -> TẮT (dù cấu hình gì khác)
+    //   2. SeedDemoData được chỉ định       -> theo giá trị đó
+    //   3. Không chỉ định                    -> bật nếu đang ở Development
+    var skipDemo = builder.Configuration.GetValue<bool>("SkipDemoDataSeed");
+    var seedDemo = !skipDemo && (
+        builder.Configuration.GetValue<bool?>("SeedDemoData")
+        ?? app.Environment.IsDevelopment());
+
+    if (seedDemo)
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await DemoDataSeeder.SeedAsync(db);
+            app.Logger.LogInformation("Đã nạp dữ liệu demo (users + tin đăng mẫu).");
+        }
+        catch (Exception ex)
+        {
+            // Không ném lỗi — demo data là tiện ích, lỗi seed demo không được
+            // làm sập API (ví dụ DB chưa migrate đủ bảng).
+            app.Logger.LogWarning(ex, "Bỏ qua seed dữ liệu demo.");
+        }
     }
 }
 
