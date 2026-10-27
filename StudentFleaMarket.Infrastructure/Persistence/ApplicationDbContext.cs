@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using StudentFleaMarket.Domain.Entities;
+using StudentFleaMarket.Domain.Enums;
 
 namespace StudentFleaMarket.Infrastructure.Persistence;
 
@@ -22,6 +23,9 @@ public class AppDbContext: DbContext
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Report> Reports => Set<Report>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<VerificationCode> VerificationCodes => Set<VerificationCode>();
+    public DbSet<ServiceAccount> ServiceAccounts => Set<ServiceAccount>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -32,11 +36,69 @@ public class AppDbContext: DbContext
         {
             entity.HasKey(u => u.Id);
             entity.HasIndex(u => u.Email).IsUnique();
+            // Username là định danh đăng nhập thay thế — chỉ unique khi có giá trị.
+            entity.HasIndex(u => u.Username).IsUnique();
             entity.Property(u => u.Email).IsRequired().HasMaxLength(256);
+            entity.Property(u => u.Username).HasMaxLength(30);
             entity.Property(u => u.FullName).IsRequired().HasMaxLength(150);
-            entity.Property(u => u.Role).HasDefaultValue(0);
-            entity.Property(u => u.Status).HasDefaultValue(1);
+            entity.Property(u => u.PasswordHash).IsRequired().HasMaxLength(512);
+            entity.Property(u => u.PhoneNumber).HasMaxLength(20);
+            entity.Property(u => u.AvatarUrl).HasMaxLength(500);
+            entity.Property(u => u.SchoolName).HasMaxLength(200);
+            entity.Property(u => u.StudentCode).HasMaxLength(50);
+            entity.Property(u => u.CommonArea).HasMaxLength(200);
+            entity.Property(u => u.Dormitory).HasMaxLength(200);
+            entity.Property(u => u.Role).HasDefaultValue((int)UserRole.User);
+            entity.Property(u => u.Status).HasDefaultValue((int)UserStatus.Active);
             entity.Property(u => u.IsEmailVerified).HasDefaultValue(false);
+        });
+
+        //ServiceAccount (AI Service — xác thực bằng API key)
+        modelBuilder.Entity<ServiceAccount>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+            entity.HasIndex(s => s.ApiKeyHash).IsUnique();
+            entity.HasIndex(s => s.KeyPrefix);
+            entity.Property(s => s.Name).IsRequired().HasMaxLength(100);
+            entity.Property(s => s.ApiKeyHash).IsRequired().HasMaxLength(128);
+            entity.Property(s => s.KeyPrefix).IsRequired().HasMaxLength(16);
+            entity.Property(s => s.Role).HasDefaultValue((int)UserRole.AiService);
+            entity.Property(s => s.Status).HasDefaultValue((int)UserStatus.Active);
+            entity.Property(s => s.RevokedReason).HasMaxLength(100);
+
+            entity.HasOne(s => s.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(s => s.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        //RefreshToken
+        modelBuilder.Entity<RefreshToken>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+            entity.HasIndex(t => t.TokenHash).IsUnique();
+            entity.Property(t => t.TokenHash).IsRequired().HasMaxLength(128);
+            entity.Property(t => t.RevokedReason).HasMaxLength(100);
+
+            entity.HasOne(t => t.User)
+                .WithMany(u => u.RefreshTokens)
+                .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        //VerificationCode
+        modelBuilder.Entity<VerificationCode>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+            entity.HasIndex(c => new { c.Email, c.CodeHash });
+            entity.HasIndex(c => c.ExpiresAt);
+            entity.Property(c => c.CodeHash).IsRequired().HasMaxLength(128);
+            entity.Property(c => c.Email).IsRequired().HasMaxLength(256);
+
+            entity.HasOne(c => c.User)
+                .WithMany(u => u.VerificationCodes)
+                .HasForeignKey(c => c.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         //Category
