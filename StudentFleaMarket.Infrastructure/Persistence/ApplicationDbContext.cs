@@ -123,6 +123,16 @@ public class AppDbContext: DbContext
             entity.Property(i => i.Location).HasMaxLength(255);
             entity.Property(i => i.IsDeleted).HasDefaultValue(false);
 
+            // Index hỗ trợ tìm kiếm & lọc nâng cao
+            entity.HasIndex(i => i.Title);                       // tìm theo từ khóa tiêu đề
+            entity.HasIndex(i => i.TitleNormalized);             // tìm theo từ khóa (đã bỏ dấu)
+            entity.HasIndex(i => i.CategoryId);                 // lọc theo danh mục
+            entity.HasIndex(i => i.Price);                      // lọc theo khoảng giá
+            entity.HasIndex(i => i.Condition);                  // lọc theo độ mới
+            entity.HasIndex(i => i.Status);                     // lọc theo trạng thái
+            entity.HasIndex(i => i.SellerId);                   // lọc theo người bán
+            entity.HasIndex(i => i.CreatedAt);                  // sắp xếp mới/cũ
+
             //Soft delete global filter
             entity.HasQueryFilter(i => !i.IsDeleted);
 

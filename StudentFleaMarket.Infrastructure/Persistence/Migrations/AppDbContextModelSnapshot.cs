@@ -287,6 +287,10 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("TitleNormalized")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -294,10 +298,22 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CategoryId");
 
+                    b.HasIndex("Condition");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("Price");
+
                     b.HasIndex("SellerId");
 
                     b.HasIndex("Slug")
                         .IsUnique();
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("Title");
+
+                    b.HasIndex("TitleNormalized");
 
                     b.ToTable("Items");
                 });
