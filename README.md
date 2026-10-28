@@ -1,24 +1,82 @@
-⚙️ STUDENT FLEA MARKET - BACKEND WEB API
+# Student Flea Market Backend
 
-An enterprise-ready, robust RESTful Web API powering the Student Flea Market platform. Build with .NET 8, Entity Framework Core and PostgreSQL, engineered to handle high-concurrency requests and integrate directly with AWS Cloud Infrastructure.
+ASP.NET Core 8 REST API for the Student Flea Market platform. The current vertical slice supports authentication, categories, and item listing management.
 
---------------------------------
+## Stack
 
-🚀 Tech Stack & Core Libraries
-- Runtime & Framework: .NET 8 Web API
-- Database & Engine: PostgreSQL
-- ORM & Data Access: Entity Framework Core 8
-- Authentication & Security: JWT (JSON Web Tokens) with Refresh Token rotation, ASP.NET Core Identity / Password Hashing
-- Object Mapping: Mapster (or AutoMapper)
-- Validation: FluentValidation
-- API Documentation: Swagger UI
-- Cloud SDK: AWS SDK for .NET (S3, CloudFront utilities)
-- Logging & Diagnostics: SeriLog
-- Containerization: Docker & Docker Compose
+- .NET SDK 8.0.427 (pinned in `global.json`)
+- ASP.NET Core Web API
+- ASP.NET Core Identity and JWT bearer authentication
+- Entity Framework Core 8 and PostgreSQL
+- FluentValidation, Serilog, Swagger
+- xUnit
 
------------------------------------
+## Projects
 
-☁️ AWS Cloud & Architecture Highlights
-- Direct S3 Upload Offloading: Backend generates cryptographically signed S3 Presigned URLs, allowing clients to upload assets straight to Amazon S3 without saturating backend memory or network bandwidth.
-- Clean Architecture Principles: Strict separation of concerns across Domain, Application, Infrastructure, and API layers to ensure testability and maintainability.
-- Enterprise Resilience: Centralized Global Exception Middleware, standard API response wrappers, and secure environment configuration handling.
+- `StudentFleaMarket.Domain`: entities and domain enums.
+- `StudentFleaMarket.Application`: API contracts, use-case interfaces, validation, and shared exceptions.
+- `StudentFleaMarket.Infrastructure`: EF Core, Identity, JWT, and catalog implementations.
+- `StudentFleaMarket.API`: controllers, middleware, HTTP pipeline, and configuration.
+- `StudentFleaMarket.Tests`: automated tests.
+
+## Local configuration
+
+Development defaults are in `StudentFleaMarket.API/appsettings.Development.json`. Override secrets with environment variables or .NET user secrets:
+
+```powershell
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Port=5432;Database=StudentFleaMarketDb;Username=postgres;Password=<password>" --project StudentFleaMarket.API
+dotnet user-secrets set "Jwt:Key" "<at-least-32-byte-secret>" --project StudentFleaMarket.API
+```
+
+Production must provide `ConnectionStrings__DefaultConnection` and `Jwt__Key`; no production secret is committed.
+
+## Restore, build, and test
+
+On Windows, use the verification script. It builds with one MSBuild node to avoid package-assets cache contention:
+
+```powershell
+.\scripts\verify.ps1
+```
+
+Equivalent commands:
+
+```powershell
+dotnet tool restore
+dotnet msbuild StudentFleaMarket.sln /t:Restore /m:1
+dotnet msbuild StudentFleaMarket.sln /t:Build /m:1 /p:Restore=false
+dotnet test StudentFleaMarket.Tests\StudentFleaMarket.Tests.csproj --no-build --no-restore
+```
+
+## Database
+
+Create/update the PostgreSQL schema:
+
+```powershell
+dotnet ef database update --project StudentFleaMarket.Infrastructure --startup-project StudentFleaMarket.API
+```
+
+Create a new migration:
+
+```powershell
+dotnet ef migrations add <MigrationName> --project StudentFleaMarket.Infrastructure --startup-project StudentFleaMarket.API --output-dir Persistence\Migrations
+```
+
+## Run
+
+```powershell
+dotnet run --project StudentFleaMarket.API
+```
+
+Swagger is enabled in Development. A ready-to-edit request collection is available in `StudentFleaMarket.API/StudentFleaMarket.API.http`.
+
+Main endpoints:
+
+- `GET /health`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/categories`
+- `GET /api/items`
+- `GET /api/items/{id}`
+- `POST /api/items` (JWT required)
+- `PUT /api/items/{id}` (JWT required, seller only)
+- `DELETE /api/items/{id}` (JWT required, seller only)
