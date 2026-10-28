@@ -32,6 +32,16 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<string>("BanReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("BannedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("BannedByUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("CommonArea")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
@@ -76,6 +86,24 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<DateTime?>("SellerApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("SellerApprovedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SellerRejectionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("SellerRequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SellerStatus")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<int>("Status")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -84,6 +112,9 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<string>("StudentCode")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("UnbannedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -94,8 +125,12 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BannedByUserId");
+
                     b.HasIndex("Email")
                         .IsUnique();
+
+                    b.HasIndex("SellerApprovedByUserId");
 
                     b.HasIndex("Username")
                         .IsUnique();
@@ -708,6 +743,23 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.HasIndex("Email", "CodeHash");
 
                     b.ToTable("VerificationCodes");
+                });
+
+            modelBuilder.Entity("StudentFleaMarket.Domain.Entities.ApplicationUser", b =>
+                {
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "BannedBy")
+                        .WithMany()
+                        .HasForeignKey("BannedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "SellerApprovedBy")
+                        .WithMany()
+                        .HasForeignKey("SellerApprovedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("BannedBy");
+
+                    b.Navigation("SellerApprovedBy");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Conversation", b =>

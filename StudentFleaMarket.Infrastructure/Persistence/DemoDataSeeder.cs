@@ -67,11 +67,25 @@ public static class DemoDataSeeder
                     Status = (int)UserStatus.Active,
                     // Demo user đã xác thực email sẵn để login được ngay, không cần OTP.
                     IsEmailVerified = true,
+                    // Demo user đã có sẵn tin đăng -> cấp quyền bán luôn,
+                    // nếu không thì luồng "đăng bán" của demo sẽ bị chặn 403.
+                    SellerStatus = (int)SellerStatus.Approved,
+                    SellerApprovedAt = DateTime.UtcNow.AddDays(-30),
                     CreatedAt = DateTime.UtcNow.AddDays(-30),
                     UpdatedAt = DateTime.UtcNow
                 };
 
                 db.Users.Add(existing);
+                await db.SaveChangesAsync(ct);
+            }
+            else if (existing.SellerStatus == (int)SellerStatus.None)
+            {
+                // Demo user đã tồn tại từ trước khi có tính năng duyệt seller:
+                // cấp quyền bán luôn để luồng demo không bị chặn 403.
+                existing.SellerStatus = (int)SellerStatus.Approved;
+                existing.SellerApprovedAt = DateTime.UtcNow.AddDays(-30);
+                existing.UpdatedAt = DateTime.UtcNow;
+                db.Users.Update(existing);
                 await db.SaveChangesAsync(ct);
             }
 

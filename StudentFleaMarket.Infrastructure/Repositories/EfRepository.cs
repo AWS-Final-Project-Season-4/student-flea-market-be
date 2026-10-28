@@ -64,6 +64,106 @@ public class UserRepository : EfRepository<ApplicationUser>, IUserRepository
             ? GetByEmailAsync(key.ToLowerInvariant(), ct)
             : GetByUsernameAsync(key, ct);
     }
+
+    public async Task<(List<ApplicationUser> Users, int TotalCount)> ListSellerRequestsAsync(
+        int? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        // Chỉ quan tâm tài khoản người dùng — Admin không cần xin quyền bán.
+        var q = DbSet.Where(u => u.Role == (int)Domain.Enums.UserRole.User);
+
+        if (status.HasValue)
+            q = q.Where(u => u.SellerStatus == status.Value);
+
+        var total = await q.CountAsync(ct);
+
+        var pageNo = page < 1 ? 1 : page;
+        var size = pageSize switch
+        {
+            < 1 => 20,
+            > 100 => 100,
+            _ => pageSize
+        };
+
+        var users = await q
+            // Yêu cầu mới nhất lên đầu; user chưa từng xin thì xếp cuối.
+            .OrderByDescending(u => u.SellerRequestedAt ?? DateTime.MinValue)
+            .ThenBy(u => u.CreatedAt)
+            .Skip((pageNo - 1) * size)
+            .Take(size)
+            .ToListAsync(ct);
+
+        return (users, total);
+    }
+
+    public async Task<(List<ApplicationUser> Users, int TotalCount)> ListForAdminAsync(
+        int? status,
+        string? keyword,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        // Bao gồm cả tài khoản Admin — Admin cần nhìn thấy danh sách Admin
+        // để thu hồi quyền quản trị cho nhau.
+        // Loại trừ tài khoản dịch vụ AI (xác thực bằng API key, không phải user).
+        var q = DbSet.Where(u => u.Role != (int)Domain.Enums.UserRole.AiService);
+
+        if (status.HasValue)
+            q = q.Where(u => u.Status == status.Value);
+
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            var k = keyword.Trim().ToLower();
+            q = q.Where(u =>
+                u.FullName.ToLower().Contains(k)
+                || u.Email.ToLower().Contains(k)
+                || (u.Username != null && u.Username.ToLower().Contains(k)));
+        }
+
+        var total = await q.CountAsync(ct);
+
+        var pageNo = page < 1 ? 1 : page;
+        var size = pageSize switch
+        {
+            < 1 => 20,
+            > 100 => 100,
+            _ => pageSize
+        };
+
+        var users = await q
+            .OrderByDescending(u => u.CreatedAt)
+            .Skip((pageNo - 1) * size)
+            .Take(size)
+            .ToListAsync(ct);
+
+        return (users, total);
+    }
+
+    public async Task<(int Status, string? BanReason)?> GetStatusAsync(Guid userId, CancellationToken ct = default)
+    {
+        // Chỉ select 2 cột cần thiết -> nhẹ hơn nhiều so với load cả entity.
+        var row = await DbSet
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new { u.Status, u.BanReason })
+            .FirstOrDefaultAsync(ct);
+
+        return row is null ? null : (row.Status, row.BanReason);
+    }
+
+    public async Task<int?> GetRoleAsync(Guid userId, CancellationToken ct = default)
+    {
+        // Chỉ select cột "Role" -> rất nhẹ, index theo PK.
+        var role = await DbSet
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => (int?)u.Role)
+            .FirstOrDefaultAsync(ct);
+
+        return role;
+    }
 }
 
 public class ServiceAccountRepository : EfRepository<ServiceAccount>, IServiceAccountRepository

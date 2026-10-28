@@ -135,6 +135,39 @@ public class ItemRepository : EfRepository<Item>, IItemRepository
     public Task<int> CountByCategoryAsync(int categoryId, CancellationToken ct = default)
         => DbSet.CountAsync(i => i.CategoryId == categoryId, ct);
 
+    public Task<int> CountBySellerAsync(Guid sellerId, CancellationToken ct = default)
+        => DbSet.CountAsync(i => i.SellerId == sellerId, ct);
+
+    /// <summary>
+    /// Gỡ toàn bộ tin đăng của một người bán (soft delete hàng loạt).
+    ///
+    /// Dùng khi Admin thu hồi quyền bán / cấm tài khoản: toàn bộ tin của người
+    /// bán đó phải biến mất khỏi sàn. Giữ lại record để không mất lịch sử.
+    /// </summary>
+    public async Task<int> RemoveAllBySellerAsync(Guid sellerId, CancellationToken ct = default)
+    {
+        var items = await DbSet
+            .Where(i => i.SellerId == sellerId && !i.IsDeleted)
+            .ToListAsync(ct);
+
+        if (items.Count == 0)
+            return 0;
+
+        var now = DateTime.UtcNow;
+
+        foreach (var item in items)
+        {
+            item.IsDeleted = true;
+            item.Status = (int)Domain.Enums.ItemStatus.Removed;
+            item.UpdatedAt = now;
+        }
+
+        DbContext.UpdateRange(items);
+        await DbContext.SaveChangesAsync(ct);
+
+        return items.Count;
+    }
+
     /// <summary>
     /// Lấy ảnh theo itemId. KHÔNG dùng AsNoTracking vì cần theo dõi thay đổi
     /// (thêm/xóa ảnh) trước khi SaveChanges.

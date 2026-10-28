@@ -19,6 +19,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceAccountService, ServiceAccountService>();
         services.AddScoped<IItemService, ItemService>();
         services.AddScoped<IFavoriteService, FavoriteService>();
+        services.AddScoped<ISellerService, SellerService>();
+        services.AddScoped<IAdminUserService, AdminUserService>();
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IServiceAccountRepository, ServiceAccountRepository>();

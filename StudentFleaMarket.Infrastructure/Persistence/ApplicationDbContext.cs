@@ -51,6 +51,25 @@ public class AppDbContext: DbContext
             entity.Property(u => u.Role).HasDefaultValue((int)UserRole.User);
             entity.Property(u => u.Status).HasDefaultValue((int)UserStatus.Active);
             entity.Property(u => u.IsEmailVerified).HasDefaultValue(false);
+
+            // ----- Seller (năng lực bán hàng do Admin cấp quyền) -----
+            entity.Property(u => u.SellerStatus).HasDefaultValue((int)SellerStatus.None);
+            entity.Property(u => u.SellerRejectionReason).HasMaxLength(500);
+
+            // Admin duyệt -> không xoá tài khoản admin khi bị xoá.
+            entity.HasOne(u => u.SellerApprovedBy)
+                .WithMany()
+                .HasForeignKey(u => u.SellerApprovedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // ----- Ban (Admin khoá tài khoản) -----
+            entity.Property(u => u.BanReason).HasMaxLength(500);
+
+            // Admin cấm -> không xoá tài khoản admin khi bị xoá.
+            entity.HasOne(u => u.BannedBy)
+                .WithMany()
+                .HasForeignKey(u => u.BannedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         //ServiceAccount (AI Service — xác thực bằng API key)
