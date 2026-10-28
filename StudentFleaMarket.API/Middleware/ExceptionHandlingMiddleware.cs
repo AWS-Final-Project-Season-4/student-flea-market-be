@@ -15,7 +15,7 @@ public class ExceptionHandlingMiddleware
         _logger = logger;
     }
 
-    public async Task InvokeAsync(HttpContext context)
+       public async Task InvokeAsync(HttpContext context)
     {
         try
         {
@@ -31,13 +31,36 @@ public class ExceptionHandlingMiddleware
             await WriteResponseAsync(context, StatusCodes.Status401Unauthorized,
                 ApiResponse.Fail(ex.Message, "UNAUTHORIZED"));
         }
+        catch (BadHttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "BadHttpRequestException: {Message}", ex.Message);
+            await WriteResponseAsync(context, StatusCodes.Status400BadRequest,
+                ApiResponse.Fail(ex.Message, "BAD_REQUEST"));
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "ArgumentException: {Message}", ex.Message);
+            await WriteResponseAsync(context, StatusCodes.Status400BadRequest,
+                ApiResponse.Fail(ex.Message, "INVALID_ARGUMENT"));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            _logger.LogWarning(ex, "KeyNotFoundException: {Message}", ex.Message);
+            await WriteResponseAsync(context, StatusCodes.Status404NotFound,
+                ApiResponse.Fail(ex.Message, "NOT_FOUND"));
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("Request was cancelled by client.");
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception: {Message}", ex.Message);
             await WriteResponseAsync(context, StatusCodes.Status500InternalServerError,
-                ApiResponse.Fail("Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau.", "INTERNAL_ERROR"));
+                ApiResponse.Fail("A system error has occurred. Please try again later.", "INTERNAL_ERROR"));
         }
     }
+
 
     private static int MapStatusCode(AppException ex) => ex switch
     {

@@ -13,7 +13,7 @@ public class RegisterRequestDto
     /// <summary>
     /// Số điện thoại (không bắt buộc).
     /// </summary>
-    public string? PhoneNumber { get; set; }
+    public string PhoneNumber { get; set; } = null!;
 
     /// <summary>
     /// Tên trường học (không bắt buộc).
@@ -38,39 +38,39 @@ public class RegisterRequestDtoValidator : AbstractValidator<RegisterRequestDto>
     public RegisterRequestDtoValidator()
     {
         RuleFor(x => x.FullName)
-            .NotEmpty().WithMessage("Họ tên không được để trống.")
-            .MinimumLength(2).WithMessage("Họ tên phải có ít nhất 2 ký tự.")
-            .MaximumLength(150).WithMessage("Họ tên không được vượt quá 150 ký tự.");
+            .NotEmpty().WithMessage("Full name cannot be left blank.")
+            .MinimumLength(2).WithMessage("Full name must be at least 2 characters long.")
+            .MaximumLength(150).WithMessage("Full name cannot exceed 150 characters.");
 
         RuleFor(x => x.Email)
-            .NotEmpty().WithMessage("Email không được để trống.")
-            .EmailAddress().WithMessage("Email không hợp lệ.")
-            .MaximumLength(256).WithMessage("Email không được vượt quá 256 ký tự.");
+            .NotEmpty().WithMessage("Email cannot be left blank.")
+            .EmailAddress().WithMessage("Invalid email address.")
+            .MaximumLength(256).WithMessage("Email cannot exceed 256 characters.");
 
         RuleFor(x => x.Password)
-            .NotEmpty().WithMessage("Mật khẩu không được để trống.")
-            .MinimumLength(6).WithMessage("Mật khẩu phải có ít nhất 6 ký tự.")
-            .MaximumLength(100).WithMessage("Mật khẩu không được vượt quá 100 ký tự.")
-            .Matches(@"[A-Za-z]").WithMessage("Mật khẩu phải chứa ít nhất 1 chữ cái.")
-            .Matches(@"\d").WithMessage("Mật khẩu phải chứa ít nhất 1 chữ số.");
+            .NotEmpty().WithMessage("Password cannot be left blank.")
+            .MinimumLength(6).WithMessage("Password must be at least 6 characters long.")
+            .MaximumLength(100).WithMessage("Password cannot exceed 100 characters.")
+            .Matches(@"[A-Za-z]").WithMessage("Password must contain at least one letter.")
+            .Matches(@"\d").WithMessage("Password must contain at least one number.");
 
         RuleFor(x => x.ConfirmPassword)
-            .Equal(x => x.Password).WithMessage("Xác nhận mật khẩu không khớp.");
+            .Equal(x => x.Password).WithMessage("Confirm password does not match.");
 
         RuleFor(x => x.PhoneNumber)
-            .Matches(@"^\+?[0-9]{9,15}$").WithMessage("Số điện thoại không hợp lệ.")
-            .When(x => !string.IsNullOrWhiteSpace(x.PhoneNumber));
+            .NotEmpty().WithMessage("Phone number cannot be left blank.")
+            .Matches(@"^\+?[0-9]{9,15}$").WithMessage("Invalid phone number.");
 
         RuleFor(x => x.SchoolName)
-            .MaximumLength(200).WithMessage("Tên trường không được vượt quá 200 ký tự.")
+            .MaximumLength(200).WithMessage("School name cannot exceed 200 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.SchoolName));
 
         RuleFor(x => x.StudentCode)
-            .MaximumLength(50).WithMessage("Mã sinh viên không được vượt quá 50 ký tự.")
+            .MaximumLength(50).WithMessage("Student code cannot exceed 50 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.StudentCode));
 
         RuleFor(x => x.Username)
-            .Matches(@"^[a-zA-Z0-9._]{3,30}$").WithMessage("Tên tài khoản phải gồm 3-30 ký tự, chỉ gồm chữ, số, dấu chấm và gạch dưới.")
+            .Matches(@"^[a-zA-Z0-9._]{3,30}$").WithMessage("Username must be 3-30 characters long and contain only letters, numbers, dots and underscores.")
             .When(x => !string.IsNullOrWhiteSpace(x.Username));
     }
 }
@@ -101,13 +101,13 @@ public class LoginRequestDtoValidator : AbstractValidator<LoginRequestDto>
     public LoginRequestDtoValidator()
     {
         RuleFor(x => x.ResolvedIdentifier)
-            .NotEmpty().WithMessage("Email hoặc tên tài khoản không được để trống.")
-            .MaximumLength(256).WithMessage("Định danh đăng nhập không được vượt quá 256 ký tự.")
+            .NotEmpty().WithMessage("Email or account name cannot be left blank.")
+            .MaximumLength(256).WithMessage("Account name cannot exceed 256 characters.")
             .Must(x => x.Contains('@') || System.Text.RegularExpressions.Regex.IsMatch(x, @"^[a-zA-Z0-9._]{3,30}$"))
-            .WithMessage("Định danh đăng nhập không hợp lệ.");
+            .WithMessage("Invalid account name.");
 
         RuleFor(x => x.Password)
-            .NotEmpty().WithMessage("Mật khẩu không được để trống.");
+            .NotEmpty().WithMessage("Password cannot be left blank.");
     }
 }
 
@@ -121,7 +121,7 @@ public class RefreshTokenRequestDtoValidator : AbstractValidator<RefreshTokenReq
     public RefreshTokenRequestDtoValidator()
     {
         RuleFor(x => x.RefreshToken)
-            .NotEmpty().WithMessage("Refresh token không được để trống.");
+            .NotEmpty().WithMessage("Refresh token cannot be left blank.");
     }
 }
 
@@ -135,8 +135,8 @@ public class SendVerificationCodeRequestDtoValidator : AbstractValidator<SendVer
     public SendVerificationCodeRequestDtoValidator()
     {
         RuleFor(x => x.Email)
-            .NotEmpty().WithMessage("Email không được để trống.")
-            .EmailAddress().WithMessage("Email không hợp lệ.");
+            .NotEmpty().WithMessage("Email cannot be left blank.")
+            .EmailAddress().WithMessage("Invalid email address.");
     }
 }
 
@@ -151,12 +151,12 @@ public class VerifyEmailRequestDtoValidator : AbstractValidator<VerifyEmailReque
     public VerifyEmailRequestDtoValidator()
     {
         RuleFor(x => x.Email)
-            .NotEmpty().WithMessage("Email không được để trống.")
-            .EmailAddress().WithMessage("Email không hợp lệ.");
+            .NotEmpty().WithMessage("Email cannot be left blank.")
+            .EmailAddress().WithMessage("Invalid email address.");
 
         RuleFor(x => x.Code)
-            .NotEmpty().WithMessage("Mã xác thực không được để trống.")
-            .Length(6).WithMessage("Mã xác thực phải gồm 6 chữ số.");
+            .NotEmpty().WithMessage("Verification code cannot be left blank.")
+            .Length(6).WithMessage("Verification code must be 6 digits.");
     }
 }
 
@@ -170,7 +170,7 @@ public class ResendVerificationCodeRequestDtoValidator : AbstractValidator<Resen
     public ResendVerificationCodeRequestDtoValidator()
     {
         RuleFor(x => x.Email)
-            .NotEmpty().WithMessage("Email không được để trống.")
-            .EmailAddress().WithMessage("Email không hợp lệ.");
+            .NotEmpty().WithMessage("Email cannot be left blank.")
+            .EmailAddress().WithMessage("Invalid email address.");
     }
 }

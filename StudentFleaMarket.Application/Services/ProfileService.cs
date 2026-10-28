@@ -25,7 +25,7 @@ public class ProfileService : IProfileService
     public async Task<UserDto> GetProfileAsync(Guid userId, CancellationToken ct = default)
     {
         var user = await _userRepo.GetByIdAsync(userId, ct)
-            ?? throw new NotFoundException("Không tìm thấy người dùng.", "USER_NOT_FOUND");
+            ?? throw new NotFoundException("User not found.", "USER_NOT_FOUND");
 
         return AuthService.MapUser(user);
     }
@@ -33,7 +33,7 @@ public class ProfileService : IProfileService
     public async Task<UserDto> UpdateProfileAsync(Guid userId, UpdateProfileRequestDto request, CancellationToken ct = default)
     {
         var user = await _userRepo.GetByIdAsync(userId, ct)
-            ?? throw new NotFoundException("Không tìm thấy người dùng.", "USER_NOT_FOUND");
+            ?? throw new NotFoundException("User not found.", "USER_NOT_FOUND");
 
         // Chỉ cập nhật các trường được gửi lên (null = không đổi)
         if (request.FullName is not null)
@@ -67,10 +67,10 @@ public class ProfileService : IProfileService
     public async Task<ApiResponse<object>> ChangePasswordAsync(Guid userId, ChangePasswordRequestDto request, CancellationToken ct = default)
     {
         var user = await _userRepo.GetByIdAsync(userId, ct)
-            ?? throw new NotFoundException("Không tìm thấy người dùng.", "USER_NOT_FOUND");
+            ?? throw new NotFoundException("User not found.", "USER_NOT_FOUND");
 
         if (!_passwordHasher.Verify(request.CurrentPassword, user.PasswordHash))
-            throw new ValidationException("Mật khẩu hiện tại không đúng.", "INVALID_CURRENT_PASSWORD");
+            throw new ValidationException("Invalid current password.", "INVALID_CURRENT_PASSWORD");
 
         user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
         user.UpdatedAt = DateTime.UtcNow;
@@ -88,6 +88,6 @@ public class ProfileService : IProfileService
         await _userRepo.SaveChangesAsync(ct);
         await _refreshTokenRepo.SaveChangesAsync(ct);
 
-        return ApiResponse<object>.Ok(new { Message = "Đổi mật khẩu thành công. Vui lòng đăng nhập lại." });
+        return ApiResponse<object>.Ok(new { Message = "Password changed successfully. Please log in again." });
     }
 }

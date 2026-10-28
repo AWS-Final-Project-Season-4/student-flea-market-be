@@ -67,7 +67,7 @@ public class EmailSender : IEmailSender
 
     public Task SendOtpAsync(string to, string fullName, string code, CancellationToken ct = default)
     {
-        var subject = "Mã xác thực tài khoản Campus Thrift & Exchange Hub";
+        var subject = "Mã xác thực tài khoản Student Flea Market";
         var body = $@"
             <div style='font-family:Segoe UI,Arial,sans-serif;max-width:520px'>
                 <h2 style='color:#16a34a'>Xác thực email</h2>

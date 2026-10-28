@@ -49,11 +49,11 @@ public class AuthService : IAuthService
         var username = NormalizeUsername(request.Username);
 
         if (await _userRepo.ExistsAsync(u => u.Email == email, ct))
-            throw new ConflictException("Email đã được đăng ký.", "EMAIL_EXISTS");
+            throw new ConflictException("Email already exists.", "EMAIL_EXISTS");
 
         // Username là định danh đăng nhập — phải unique toàn hệ thống.
         if (username is not null && await _userRepo.ExistsAsync(u => u.Username == username, ct))
-            throw new ConflictException("Tên tài khoản đã tồn tại. Vui lòng chọn tên khác.", "USERNAME_EXISTS");
+            throw new ConflictException("Username already exists. Please choose another name.", "USERNAME_EXISTS");
 
         var user = new ApplicationUser
         {
@@ -81,7 +81,7 @@ public class AuthService : IAuthService
         // Không sinh token: người dùng phải xác thực email rồi mới đăng nhập được.
         return new RegisterResultDto
         {
-            Message = "Đăng ký thành công. Vui lòng kiểm tra email để xác thực tài khoản trước khi đăng nhập.",
+            Message = "Registration successful. Please check your email to verify your account before logging in.",
             User = MapUser(user),
             VerificationEmail = user.Email
         };
