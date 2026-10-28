@@ -41,6 +41,13 @@ public class ItemService : IItemService
         if (seller.Role == (int)UserRole.AiService)
             throw new ForbiddenException("Tài khoản dịch vụ AI không được đăng tin bán.", "AI_CANNOT_CREATE_ITEM");
 
+        // ---------------------------------------------------------------
+        // Chỉ tài khoản được Admin duyệt mới đăng được tin mới.
+        // Admin có sẵn toàn bộ quyền nên không cần duyệt.
+        // Luật nằm trong SellerPermission (nguồn sự thật duy nhất).
+        // ---------------------------------------------------------------
+        SellerPermission.EnsureCanSell(seller);
+
         var item = new Item
         {
             Id = Guid.NewGuid(),
@@ -91,6 +98,18 @@ public class ItemService : IItemService
         // Chỉ chủ tin được sửa
         if (item.SellerId != userId)
             throw new ForbiddenException("Bạn không có quyền sửa tin đăng này.", "NOT_ITEM_OWNER");
+
+        // ---------------------------------------------------------------
+        // Chủ tin vẫn phải CÓ quyền bán mới được sửa tin.
+        // Nếu Admin đã thu hồi quyền bán (SellerStatus = None) thì toàn bộ
+        // tin của tài khoản đó đã bị gỡ khỏi sàn -> không còn gì để sửa.
+        // Nhưng nếu tài khoản bị từ chối / đang chờ duyệt mà vẫn còn tin cũ,
+        // phải chặn để không lách luật "chỉ seller được duyệt mới đăng bán".
+        // ---------------------------------------------------------------
+        var seller = await _userRepo.GetByIdAsync(item.SellerId, ct)
+            ?? throw new NotFoundException("Không tìm thấy người bán.", "USER_NOT_FOUND");
+
+        SellerPermission.EnsureCanSell(seller);
 
         if (item.Status == (int)ItemStatus.Sold)
             throw new ValidationException("Tin đã bán không thể chỉnh sửa.", "ITEM_ALREADY_SOLD");
@@ -152,7 +171,6 @@ public class ItemService : IItemService
 
         var reloaded = await _itemRepo.GetDetailAsync(itemId, ct) ?? item;
         var category = await _categoryRepo.GetByIdAsync(reloaded.CategoryId, ct);
-        var seller = await _userRepo.GetByIdAsync(reloaded.SellerId, ct);
         var favCount = await _favoriteRepo.CountByItemAsync(itemId, ct);
         var isFav = await _favoriteRepo.ExistsAsync(userId, itemId, ct);
 
@@ -323,6 +341,8 @@ public class ItemService : IItemService
             CreatedAt = item.CreatedAt
         };
     }
+
+    // ------------------------------------------------------------ HELPERS
 
     private static async Task<ItemDetailDto> BuildDetailDto(
         Item item,

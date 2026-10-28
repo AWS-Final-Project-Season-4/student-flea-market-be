@@ -50,6 +50,23 @@ public interface IItemRepository : IRepository<Item>
     /// Đếm số tin đăng theo danh mục — dùng cho màn hình danh mục.
     /// </summary>
     Task<int> CountByCategoryAsync(int categoryId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Đếm số tin đăng của một người bán (bỏ qua tin đã gỡ / soft delete).
+    /// Dùng cho màn hình Admin duyệt người bán.
+    /// </summary>
+    Task<int> CountBySellerAsync(Guid sellerId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gỡ (soft delete) TOÀN BỘ tin đăng của một người bán.
+    ///
+    /// Dùng khi Admin thu hồi quyền bán hoặc cấm tài khoản — tin của người bán
+    /// đó không được tiếp tục hiển thị công khai trên sàn.
+    ///
+    /// Soft delete (không xóa vật lý) để giữ lịch sử giao dịch / lượt yêu thích.
+    /// Trả về số tin đăng đã gỡ.
+    /// </summary>
+    Task<int> RemoveAllBySellerAsync(Guid sellerId, CancellationToken ct = default);
 }
 
 /// <summary>

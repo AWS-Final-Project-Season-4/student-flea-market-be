@@ -99,7 +99,16 @@ public class AuthService : IAuthService
             throw new UnauthorizedException("Email, tên tài khoản hoặc mật khẩu không đúng.", "INVALID_CREDENTIALS");
 
         if (user.Status == (int)UserStatus.Banned)
-            throw new UnauthorizedException("Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.", "ACCOUNT_BANNED");
+        {
+            // Nêu rõ lý do cấm (nếu Admin đã ghi) để user biết phải làm gì.
+            var reason = string.IsNullOrWhiteSpace(user.BanReason)
+                ? string.Empty
+                : $" Lý do: {user.BanReason}";
+
+            throw new UnauthorizedException(
+                $"Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.{reason}",
+                "ACCOUNT_BANNED");
+        }
 
         if (user.Status == (int)UserStatus.Inactive)
             throw new UnauthorizedException("Tài khoản chưa được kích hoạt.", "ACCOUNT_INACTIVE");
@@ -346,7 +355,14 @@ public class AuthService : IAuthService
         Status = user.Status,
         IsEmailVerified = user.IsEmailVerified,
         CreatedAt = user.CreatedAt,
-        UpdatedAt = user.UpdatedAt
+        UpdatedAt = user.UpdatedAt,
+        // ----- Seller (năng lực bán hàng do Admin cấp quyền) -----
+        SellerStatus = user.SellerStatus,
+        SellerStatusName = SellerService.StatusNameOf(user.SellerStatus),
+        CanSell = SellerPermission.CanSell(user),
+        // ----- Ban (Admin khoá tài khoản) -----
+        BanReason = user.BanReason,
+        IsBanned = user.Status == (int)UserStatus.Banned
     };
 
     /// <summary>
