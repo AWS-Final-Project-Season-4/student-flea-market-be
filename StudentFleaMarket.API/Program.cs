@@ -168,6 +168,9 @@ builder.Services.AddSwaggerGen(options =>
             "ItemsController" => "1. Tìm kiếm & Xem tin",
             "ItemsForSaleController" => "2. Đăng bán & Quản lý tin",
             "FavoritesController" => "3. Yêu thích (Wishlist)",
+            "SellerController" => "4. Quyền bán hàng (Seller)",
+            "AdminSellerController" => "5. Admin - Duyệt người bán",
+            "AdminUsersController" => "6. Admin - Quản lý & cấm tài khoản",
             _ => controllerName ?? "Khác"
         };
 
@@ -233,6 +236,15 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 app.UseAuthentication();
+// Đồng bộ role từ DB -> cấp / thu hồi quyền Admin có hiệu lực tức thì
+// (JWT là stateless, role nhúng trong token sẽ cũ nếu không đồng bộ).
+// Phải chạy SAU UseAuthentication và TRƯỚC UseAuthorization.
+app.UseMiddleware<RoleSyncMiddleware>();
+// Chặn tài khoản đã bị Admin cấm — phải chạy SAU UseAuthentication (để đọc
+// được JWT đã xác thực) và TRƯỚC UseAuthorization.
+// JWT là stateless nên access token đã cấp vẫn dùng được tới hết hạn —
+// middleware này tra trạng thái tài khoản mỗi request để cấm có hiệu lực tức thì.
+app.UseMiddleware<BannedUserBlockMiddleware>();
 // Xác thực tài khoản dịch vụ AI phải chạy SAU UseAuthentication (để đọc được JWT
 // đã xác thực) và TRƯỚC UseAuthorization (để principal do API key tạo ra được
 // framework kiểm tra khi áp dụng [Authorize]).
