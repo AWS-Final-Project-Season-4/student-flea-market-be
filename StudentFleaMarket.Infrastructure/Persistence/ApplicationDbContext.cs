@@ -1,17 +1,14 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using StudentFleaMarket.Domain.Entities;
 
 namespace StudentFleaMarket.Infrastructure.Persistence;
 
-public class AppDbContext: DbContext
+public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
+    : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>(options)
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
-    {
-
-    }
-
-    public DbSet<ApplicationUser> Users => Set<ApplicationUser>();
-    public DbSet<Category> Category => Set<Category>();
+    public DbSet<Category> Categories => Set<Category>();
     public DbSet<Item> Items => Set<Item>();
     public DbSet<ItemImage> ItemImages => Set<ItemImage>();
     public DbSet<Favorite> Favorites => Set<Favorite>();
@@ -26,232 +23,166 @@ public class AppDbContext: DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        
-        //ApplicationUser
-        modelBuilder.Entity<ApplicationUser>(entity => 
+
+        modelBuilder.Entity<ApplicationUser>(entity =>
         {
-            entity.HasKey(u => u.Id);
-            entity.HasIndex(u => u.Email).IsUnique();
-            entity.Property(u => u.Email).IsRequired().HasMaxLength(256);
-            entity.Property(u => u.FullName).IsRequired().HasMaxLength(150);
-            entity.Property(u => u.Role).HasDefaultValue(0);
-            entity.Property(u => u.Status).HasDefaultValue(1);
-            entity.Property(u => u.IsEmailVerified).HasDefaultValue(false);
+            entity.ToTable("Users");
+            entity.Property(x => x.FullName).IsRequired().HasMaxLength(150);
+            entity.Property(x => x.SchoolName).HasMaxLength(200);
+            entity.Property(x => x.StudentCode).HasMaxLength(50);
+            entity.Property(x => x.AvatarUrl).HasMaxLength(500);
+            entity.Property(x => x.Email).IsRequired().HasMaxLength(256);
+            entity.Property(x => x.PasswordHash).IsRequired();
+            entity.Property(x => x.EmailConfirmed).HasColumnName("IsEmailVerified");
+            entity.Property(x => x.UpdatedAt).IsRequired();
+            entity.Property(x => x.Role).HasDefaultValue(0);
+            entity.Property(x => x.Status).HasDefaultValue(1);
+            entity.HasIndex(x => x.NormalizedEmail).HasDatabaseName("EmailIndex").IsUnique();
+            entity.HasIndex(x => x.StudentCode).IsUnique().HasFilter("\"StudentCode\" IS NOT NULL");
         });
 
-        //Category
+        modelBuilder.Entity<IdentityRole<Guid>>().ToTable("Roles");
+        modelBuilder.Entity<IdentityUserRole<Guid>>().ToTable("UserRoles");
+        modelBuilder.Entity<IdentityUserClaim<Guid>>().ToTable("UserClaims");
+        modelBuilder.Entity<IdentityUserLogin<Guid>>().ToTable("UserLogins");
+        modelBuilder.Entity<IdentityRoleClaim<Guid>>().ToTable("RoleClaims");
+        modelBuilder.Entity<IdentityUserToken<Guid>>().ToTable("UserTokens");
+
         modelBuilder.Entity<Category>(entity =>
         {
-            entity.HasKey(c => c.Id);
-            entity.HasIndex(c => c.Slug).IsUnique();
-            entity.Property(c => c.Name).IsRequired().HasMaxLength(100);
-            entity.Property(c => c.Slug).IsRequired().HasMaxLength(150);
-            entity.Property(c => c.Order).HasDefaultValue(0); 
-            
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.Slug).IsUnique();
+            entity.Property(x => x.Name).IsRequired().HasMaxLength(100);
+            entity.Property(x => x.Slug).IsRequired().HasMaxLength(150);
+            entity.Property(x => x.Description).HasMaxLength(500);
         });
 
-        //Item
         modelBuilder.Entity<Item>(entity =>
         {
-            entity.HasKey(i => i.Id);
-            entity.HasIndex(i => i.Slug).IsUnique();
-            entity.Property(i => i.Title).IsRequired().HasMaxLength(200);
-            entity.Property(i => i.Slug).IsRequired().HasMaxLength(250);
-            entity.Property(i => i.Price).HasPrecision(18, 2);
-            entity.Property(i => i.Location).HasMaxLength(255);
-            entity.Property(i => i.IsDeleted).HasDefaultValue(false);
-
-            //Soft delete global filter
-            entity.HasQueryFilter(i => !i.IsDeleted);
-
-            //Seller relation (Restrict delete)
-            entity.HasOne(i => i.Seller)
-                .WithMany(u => u.Items)
-                .HasForeignKey(i => i.SellerId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            //Category relation (Restrict delete)
-            entity.HasOne(i => i.Category)
-                .WithMany(c => c.Items)
-                .HasForeignKey(i => i.CategoryId)
-                .OnDelete(DeleteBehavior.Restrict);
-            
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.Slug).IsUnique();
+            entity.HasIndex(x => new { x.CategoryId, x.Status, x.CreatedAt });
+            entity.HasIndex(x => new { x.SellerId, x.Status });
+            entity.Property(x => x.Title).IsRequired().HasMaxLength(200);
+            entity.Property(x => x.Slug).IsRequired().HasMaxLength(250);
+            entity.Property(x => x.Description).HasMaxLength(5000);
+            entity.Property(x => x.Price).HasPrecision(18, 2);
+            entity.Property(x => x.Location).IsRequired().HasMaxLength(255);
+            entity.HasIndex(x => x.SellerId);
+            entity.HasIndex(x => x.CategoryId);
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.CreatedAt);
+            entity.ToTable(t => t.HasCheckConstraint("CK_Items_Price_NonNegative", "\"Price\" >= 0"));
+            entity.HasOne(x => x.Seller).WithMany(x => x.Items).HasForeignKey(x => x.SellerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Category).WithMany(x => x.Items).HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Restrict);
         });
 
-        //ItemImage
         modelBuilder.Entity<ItemImage>(entity =>
         {
-            entity.HasKey(img => img.Id);
-            entity.Property(img => img.ImageUrl).IsRequired().HasMaxLength(500);
-
-            //Relation
-            entity.HasOne(img => img.Item)
-                .WithMany(i => i.Images)
-                .HasForeignKey(img => img.ItemId)
-                .OnDelete(DeleteBehavior.Cascade);
-            
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ImageUrl).IsRequired().HasMaxLength(500);
+            entity.HasIndex(x => new { x.ItemId, x.Order }).IsUnique();
+            entity.HasOne(x => x.Item).WithMany(x => x.Images).HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Cascade);
         });
 
-        //Favorite (Composite unique index & Cascade on Item delete)
-        modelBuilder.Entity<Favorite>(entity => 
+        modelBuilder.Entity<Favorite>(entity =>
         {
-            entity.HasKey(f => f.Id);
-            entity.HasIndex(f => new { f.UserId, f.ItemId }).IsUnique();
-
-           
-            entity.HasOne(f => f.User)
-                .WithMany(i => i.Favorites)
-                .HasForeignKey(f => f.UserId)
-                .OnDelete(DeleteBehavior.Restrict);
-            
-            entity.HasOne(f => f.Item)
-                .WithMany(u => u.Favorites)
-                .HasForeignKey(f => f.ItemId)
-                .OnDelete(DeleteBehavior.Cascade);
-            
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.UserId, x.ItemId }).IsUnique();
+            entity.HasOne(x => x.User).WithMany(x => x.Favorites).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Item).WithMany(x => x.Favorites).HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Cascade);
         });
 
-        //ExchangeRequest
         modelBuilder.Entity<ExchangeRequest>(entity =>
         {
-            entity.HasKey(er => er.Id);
-            entity.Property(er => er.AdditionalAmount).HasPrecision(18, 2);
-            
-            entity.HasOne(er => er.Requester)
-                  .WithMany()
-                  .HasForeignKey(er => er.RequesterId)
-                  .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasOne(er => er.RequestedItem)
-                  .WithMany()
-                  .HasForeignKey(er => er.RequestedItemId)
-                  .OnDelete(DeleteBehavior.Restrict);
-        
-            entity.HasOne(er => er.OfferedItem)
-                  .WithMany()
-                  .HasForeignKey(er => er.OfferedItemId)
-                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.AdditionalAmount).HasPrecision(18, 2);
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.ExpiresAt);
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_ExchangeRequests_AdditionalAmount", "\"AdditionalAmount\" IS NULL OR \"AdditionalAmount\" >= 0");
+                t.HasCheckConstraint("CK_ExchangeRequests_DifferentItems", "\"OfferedItemId\" IS NULL OR \"OfferedItemId\" <> \"RequestedItemId\"");
+            });
+            entity.HasOne(x => x.Requester).WithMany().HasForeignKey(x => x.RequesterId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.RequestedItem).WithMany().HasForeignKey(x => x.RequestedItemId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.OfferedItem).WithMany().HasForeignKey(x => x.OfferedItemId).OnDelete(DeleteBehavior.Restrict);
         });
 
-        //Transaction
         modelBuilder.Entity<Transaction>(entity =>
         {
-            entity.HasKey(t => t.Id);
-            entity.Property(t => t.Amount).HasPrecision(18,2);
-            entity.Property(t => t.MeetingLocation).IsRequired().HasMaxLength(255);
-
-            entity.HasOne(t => t.Initiator)
-                  .WithMany()
-                  .HasForeignKey(t => t.InitiatorId)
-                  .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasOne(t => t.Counterparty)
-                  .WithMany()
-                  .HasForeignKey(t => t.CounterpartyId)
-                  .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasOne(t => t.Item)
-                  .WithMany()
-                  .HasForeignKey(t => t.ItemId)
-                  .OnDelete(DeleteBehavior.Restrict);
-            
-            entity.HasOne(t => t.ExchangeRequest)
-                  .WithMany()
-                  .HasForeignKey(t => t.ExchangeRequestId)
-                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.TotalAmount).HasPrecision(18, 2);
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.CreatedAt);
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_Transactions_DifferentUsers", "\"BuyerId\" <> \"SellerId\"");
+                t.HasCheckConstraint("CK_Transactions_TotalAmount", "\"TotalAmount\" >= 0");
+            });
+            entity.HasOne(x => x.Buyer).WithMany().HasForeignKey(x => x.BuyerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Seller).WithMany().HasForeignKey(x => x.SellerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
         });
 
-        //Payment
         modelBuilder.Entity<Payment>(entity =>
         {
-            entity.HasKey(p => p.Id);
-            entity.Property(p => p.Amount).HasPrecision(18, 2);
-            entity.Property(p => p.TransactionRef).IsRequired().HasMaxLength(150);
-            entity.HasOne(p => p.Transaction)
-                  .WithOne(t => t.Payment)
-                  .HasForeignKey<Payment>(p => p.TransactionId)
-                  .OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(p => p.Payer)
-                  .WithMany()
-                  .HasForeignKey(p => p.PayerId)
-                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PaymentUrl).IsRequired().HasMaxLength(1000);
+            entity.Property(x => x.TransactionRef).IsRequired().HasMaxLength(150);
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.TransactionRef);
+            entity.ToTable(t => t.HasCheckConstraint("CK_Payments_Amount", "\"Amount\" >= 0"));
+            entity.HasOne(x => x.Transaction).WithOne(x => x.Payment).HasForeignKey<Payment>(x => x.TransactionId).OnDelete(DeleteBehavior.Restrict);
         });
 
-        //Conversation
         modelBuilder.Entity<Conversation>(entity =>
         {
-            entity.HasKey(c => c.Id);
-            entity.HasOne(c => c.Item)
-                  .WithMany()
-                  .HasForeignKey(c => c.ItemId)
-                  .OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(c => c.Buyer)
-                  .WithMany()
-                  .HasForeignKey(c => c.BuyerId)
-                  .OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(c => c.Seller)
-                  .WithMany()
-                  .HasForeignKey(c => c.SellerId)
-                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.BuyerId, x.SellerId, x.ItemId }).IsUnique();
+            entity.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Buyer).WithMany().HasForeignKey(x => x.BuyerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Seller).WithMany().HasForeignKey(x => x.SellerId).OnDelete(DeleteBehavior.Restrict);
         });
 
-        //Message
-         modelBuilder.Entity<Message>(entity =>
+        modelBuilder.Entity<Message>(entity =>
         {
-            entity.HasKey(m => m.Id);
-            entity.Property(m => m.Content).IsRequired();
-            entity.HasOne(m => m.Conversation)
-                  .WithMany(c => c.Messages)
-                  .HasForeignKey(m => m.ConversationId)
-                  .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(m => m.Sender)
-                  .WithMany()
-                  .HasForeignKey(m => m.SenderId)
-                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Content).IsRequired().HasMaxLength(5000);
+            entity.HasIndex(x => new { x.ConversationId, x.SentAt });
+            entity.HasIndex(x => x.SentAt);
+            entity.HasIndex(x => x.IsRead);
+            entity.HasOne(x => x.Conversation).WithMany(x => x.Messages).HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Buyer).WithMany().HasForeignKey(x => x.BuyerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Sender).WithMany().HasForeignKey(x => x.SenderId).OnDelete(DeleteBehavior.Restrict);
         });
 
-        //Review (Unique on TransactionId)
         modelBuilder.Entity<Review>(entity =>
         {
-            entity.HasKey(r => r.Id);
-            entity.HasIndex(r => r.TransactionId).IsUnique();
-            entity.HasOne(r => r.Transaction)
-                  .WithOne(t => t.Review)
-                  .HasForeignKey<Review>(r => r.TransactionId)
-                  .OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(r => r.Reviewer)
-                  .WithMany()
-                  .HasForeignKey(r => r.ReviewerId)
-                  .OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(r => r.Reviewee)
-                  .WithMany()
-                  .HasForeignKey(r => r.RevieweeId)
-                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.TransactionId, x.ReviewerId, x.RevieweeId }).IsUnique();
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_Reviews_Rating", "\"Rating\" BETWEEN 1 AND 5");
+                t.HasCheckConstraint("CK_Reviews_DifferentUsers", "\"ReviewerId\" <> \"RevieweeId\"");
+            });
+            entity.HasOne(x => x.Transaction).WithMany(x => x.Reviews).HasForeignKey(x => x.TransactionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Reviewer).WithMany().HasForeignKey(x => x.ReviewerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Reviewee).WithMany().HasForeignKey(x => x.RevieweeId).OnDelete(DeleteBehavior.Restrict);
         });
 
-        //Report
         modelBuilder.Entity<Report>(entity =>
         {
-            entity.HasKey(rep => rep.Id);
-            entity.Property(rep => rep.Description).IsRequired();
-            entity.HasOne(rep => rep.Reporter)
-                  .WithMany()
-                  .HasForeignKey(rep => rep.ReporterId)
-                  .OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(rep => rep.ReportedUser)
-                  .WithMany()
-                  .HasForeignKey(rep => rep.ReportedUserId)
-                  .OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(rep => rep.Item)
-                  .WithMany()
-                  .HasForeignKey(rep => rep.ItemId)
-                  .OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(rep => rep.ResolvedBy)
-                  .WithMany()
-                  .HasForeignKey(rep => rep.ResolvedById)
-                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Description).IsRequired().HasMaxLength(2000);
+            entity.Property(x => x.AdminNote).HasMaxLength(2000);
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.CreatedAt);
+            entity.ToTable(t => t.HasCheckConstraint("CK_Reports_HasTarget", "\"ReportedUserId\" IS NOT NULL OR \"ItemId\" IS NOT NULL"));
+            entity.HasOne(x => x.Reporter).WithMany().HasForeignKey(x => x.ReporterId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ReportedUser).WithMany().HasForeignKey(x => x.ReportedUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ResolvedBy).WithMany().HasForeignKey(x => x.ResolvedById).OnDelete(DeleteBehavior.Restrict);
         });
-
     }
-
 }

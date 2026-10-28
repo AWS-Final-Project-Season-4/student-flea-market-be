@@ -7,6 +7,7 @@ public class Category
     public string Slug { get; set; } = null!;
     public string? Description { get; set; }
     public int Order { get; set; } = 0;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     //Navigation Properties (Single-level, NO ParentId)
     public ICollection<Item> Items { get; set; } = new List<Item>();

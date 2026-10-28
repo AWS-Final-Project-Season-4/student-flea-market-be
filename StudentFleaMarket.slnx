@@ -1,6 +1,0 @@
-<Solution>
-  <Project Path="StudentFleaMarket.API/StudentFleaMarket.API.csproj" />
-  <Project Path="StudentFleaMarket.Application/StudentFleaMarket.Application.csproj" />
-  <Project Path="StudentFleaMarket.Domain/StudentFleaMarket.Domain.csproj" />
-  <Project Path="StudentFleaMarket.Infrastructure/StudentFleaMarket.Infrastructure.csproj" />
-</Solution>

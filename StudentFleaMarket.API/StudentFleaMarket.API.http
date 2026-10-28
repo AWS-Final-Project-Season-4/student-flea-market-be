@@ -1,6 +1,44 @@
-@StudentFleaMarket.API_HostAddress = http://localhost:5033
+@host = http://localhost:5033
+@token = replace-with-access-token
 
-GET {{StudentFleaMarket.API_HostAddress}}/weatherforecast/
-Accept: application/json
+GET {{host}}/health
 
 ###
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "fullName": "Student Demo",
+  "email": "student@example.com",
+  "password": "StrongPass1",
+  "schoolName": "Demo University",
+  "studentCode": "S001"
+}
+
+###
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "student@example.com",
+  "password": "StrongPass1"
+}
+
+###
+GET {{host}}/api/items?page=1&pageSize=20
+
+###
+POST {{host}}/api/items
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "categoryId": 1,
+  "title": "Used textbook",
+  "description": "Good condition",
+  "price": 50000,
+  "condition": 3,
+  "isExchangeEnabled": true,
+  "location": "Campus A",
+  "imageUrls": []
+}
