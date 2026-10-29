@@ -157,7 +157,7 @@ builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo
     {
-        Title = "Campus Thrift & Exchange Hub API",
+        Title = "Student Flea Market API",
         Version = "v1",
         Description = "API cho sàn giao dịch đồ cũ sinh viên."
     });
