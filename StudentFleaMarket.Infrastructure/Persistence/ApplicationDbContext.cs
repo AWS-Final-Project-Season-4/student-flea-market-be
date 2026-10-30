@@ -51,6 +51,25 @@ public class AppDbContext: DbContext
             entity.Property(u => u.Role).HasDefaultValue((int)UserRole.User);
             entity.Property(u => u.Status).HasDefaultValue((int)UserStatus.Active);
             entity.Property(u => u.IsEmailVerified).HasDefaultValue(false);
+
+            // ----- Seller (năng lực bán hàng do Admin cấp quyền) -----
+            entity.Property(u => u.SellerStatus).HasDefaultValue((int)SellerStatus.None);
+            entity.Property(u => u.SellerRejectionReason).HasMaxLength(500);
+
+            // Admin duyệt -> không xoá tài khoản admin khi bị xoá.
+            entity.HasOne(u => u.SellerApprovedBy)
+                .WithMany()
+                .HasForeignKey(u => u.SellerApprovedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // ----- Ban (Admin khoá tài khoản) -----
+            entity.Property(u => u.BanReason).HasMaxLength(500);
+
+            // Admin cấm -> không xoá tài khoản admin khi bị xoá.
+            entity.HasOne(u => u.BannedBy)
+                .WithMany()
+                .HasForeignKey(u => u.BannedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         //ServiceAccount (AI Service — xác thực bằng API key)
@@ -122,6 +141,16 @@ public class AppDbContext: DbContext
             entity.Property(i => i.Price).HasPrecision(18, 2);
             entity.Property(i => i.Location).HasMaxLength(255);
             entity.Property(i => i.IsDeleted).HasDefaultValue(false);
+
+            // Index hỗ trợ tìm kiếm & lọc nâng cao
+            entity.HasIndex(i => i.Title);                       // tìm theo từ khóa tiêu đề
+            entity.HasIndex(i => i.TitleNormalized);             // tìm theo từ khóa (đã bỏ dấu)
+            entity.HasIndex(i => i.CategoryId);                 // lọc theo danh mục
+            entity.HasIndex(i => i.Price);                      // lọc theo khoảng giá
+            entity.HasIndex(i => i.Condition);                  // lọc theo độ mới
+            entity.HasIndex(i => i.Status);                     // lọc theo trạng thái
+            entity.HasIndex(i => i.SellerId);                   // lọc theo người bán
+            entity.HasIndex(i => i.CreatedAt);                  // sắp xếp mới/cũ
 
             //Soft delete global filter
             entity.HasQueryFilter(i => !i.IsDeleted);

@@ -23,6 +23,39 @@ public class UserDto
     public bool IsEmailVerified { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+
+    // ------------------------------------------------------------ SELLER
+    // "Seller" là năng lực được Admin cấp quyền, KHÔNG phải UserRole.
+    // Frontend dùng CanSell để bật/tắt nút "Đăng tin bán".
+
+    /// <summary>
+    /// Trạng thái quyền bán: 0 = None, 1 = Pending, 2 = Approved, 3 = Rejected.
+    /// </summary>
+    public int SellerStatus { get; set; }
+
+    /// <summary>
+    /// Tên trạng thái dễ đọc: "Chưa đăng ký bán", "Đang chờ duyệt",
+    /// "Đã được duyệt", "Bị từ chối".
+    /// </summary>
+    public string SellerStatusName { get; set; } = "Chưa đăng ký bán";
+
+    /// <summary>
+    /// Tài khoản đã được phép đăng tin bán hay chưa.
+    /// </summary>
+    public bool CanSell { get; set; }
+
+    // ------------------------------------------------------------ BAN
+    // Admin cấm tài khoản -> user không đăng nhập lại được cho tới khi được gỡ cấm.
+
+    /// <summary>
+    /// Lý do Admin cấm tài khoản (nếu đang bị cấm).
+    /// </summary>
+    public string? BanReason { get; set; }
+
+    /// <summary>
+    /// Tài khoản đang bị cấm hay không.
+    /// </summary>
+    public bool IsBanned { get; set; }
 }
 
 public class AuthResultDto

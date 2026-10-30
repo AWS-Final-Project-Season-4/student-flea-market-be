@@ -17,9 +17,16 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<IServiceAccountService, ServiceAccountService>();
+        services.AddScoped<IItemService, ItemService>();
+        services.AddScoped<IFavoriteService, FavoriteService>();
+        services.AddScoped<ISellerService, SellerService>();
+        services.AddScoped<IAdminUserService, AdminUserService>();
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IServiceAccountRepository, ServiceAccountRepository>();
+        services.AddScoped<IItemRepository, ItemRepository>();
+        services.AddScoped<ICategoryRepository, CategoryRepository>();
+        services.AddScoped<IFavoriteRepository, FavoriteRepository>();
         services.AddScoped<IRepository<ApplicationUser>, EfRepository<ApplicationUser>>();
         services.AddScoped<IRepository<RefreshToken>, EfRepository<RefreshToken>>();
         services.AddScoped<IRepository<VerificationCode>, EfRepository<VerificationCode>>();

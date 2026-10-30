@@ -7,6 +7,12 @@ public class Item
     public int CategoryId { get; set; }
     public string Title { get; set; } = null!;
     public string Slug { get; set; } = null!;
+
+    /// <summary>
+    /// Bản chuẩn hóa của Title: bỏ dấu tiếng Việt, chữ thường, gộp khoảng trắng.
+    /// Dùng cho tìm kiếm từ khóa (đã có index) để "sach" khớp "Sách".
+    /// </summary>
+    public string TitleNormalized { get; set; } = null!;
     public string? Description { get; set; }
     public decimal Price { get; set; }
     public int Condition { get; set; }
