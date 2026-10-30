@@ -13,8 +13,8 @@ public class EmailOptions
     public bool UseSsl { get; set; } = false;
     public string? Username { get; set; }
     public string? Password { get; set; }
-    public string FromEmail { get; set; } = "no-reply@campusfleamarket.local";
-    public string FromName { get; set; } = "Campus Thrift & Exchange Hub";
+    public string FromEmail { get; set; } = "no-reply@studentfleamarket.local";
+    public string FromName { get; set; } = "Student Flea Market";
 
     /// <summary>
     /// true = chỉ ghi log nội dung email ra console (dùng cho môi trường Development
