@@ -28,7 +28,7 @@ public class AuthController : ControllerBase
 
     /// <summary>
     /// Đăng nhập, trả về Access Token + Refresh Token.
-    /// Định danh đăng nhập nhận cả username ("admin") lẫn email ("admin@sv.edu.vn").
+    /// Định danh đăng nhập nhận cả username ("admin") lẫn email ("admin@gmail.com").
     /// </summary>
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequestDto request, CancellationToken ct)
@@ -54,7 +54,7 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Logout([FromBody] RefreshTokenRequestDto request, CancellationToken ct)
     {
         await _authService.LogoutAsync(request, ct);
-        return Ok(new { Message = "Đăng xuất thành công." });
+        return Ok(new { Message = "Logged out successfully" });
     }
 
     /// <summary>

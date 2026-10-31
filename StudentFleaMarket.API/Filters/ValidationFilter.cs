@@ -44,7 +44,7 @@ public class ValidationFilter : IAsyncActionFilter
                 context.Result = new BadRequestObjectResult(new
                 {
                     success = false,
-                    message = "Dữ liệu không hợp lệ.",
+                    message = "Invalid Data.",
                     code = "VALIDATION_ERROR",
                     errors
                 });

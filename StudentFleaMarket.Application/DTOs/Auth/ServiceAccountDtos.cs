@@ -21,14 +21,14 @@ public class CreateServiceAccountRequestDtoValidator : AbstractValidator<CreateS
     public CreateServiceAccountRequestDtoValidator()
     {
         RuleFor(x => x.Name)
-            .NotEmpty().WithMessage("Tên dịch vụ không được để trống.")
-            .MinimumLength(3).WithMessage("Tên dịch vụ phải có ít nhất 3 ký tự.")
-            .MaximumLength(100).WithMessage("Tên dịch vụ không được vượt quá 100 ký tự.")
-            .Matches(@"^[a-zA-Z0-9._-]+$").WithMessage("Tên dịch vụ chỉ gồm chữ, số, dấu chấm, gạch dưới và gạch ngang.");
+            .NotEmpty().WithMessage("Service name cannot be left blank.")
+            .MinimumLength(3).WithMessage("Service name must be at least 3 characters long.")
+            .MaximumLength(100).WithMessage("Service name cannot exceed 100 characters.")
+            .Matches(@"^[a-zA-Z0-9._-]+$").WithMessage("Service name can only contain letters, numbers, dots, underscores and hyphens.");
 
         RuleFor(x => x.ExpiresAt)
             .Must(x => x is null || x > DateTime.UtcNow.AddMinutes(1))
-            .WithMessage("Ngày hết hạn phải nằm trong tương lai.");
+            .WithMessage("Expiry date must be in the future.");
     }
 }
 

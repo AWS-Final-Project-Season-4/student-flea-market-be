@@ -53,12 +53,12 @@ public class ServiceAccountService : IServiceAccountService
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(name))
-            throw new ValidationException("Tên dịch vụ không được để trống.", "VALIDATION_ERROR");
+            throw new ValidationException("Service name cannot be left blank.", "VALIDATION_ERROR");
 
         var trimmedName = name.Trim();
 
         if (await _repo.ExistsAsync(s => s.Name == trimmedName, ct))
-            throw new ConflictException("Tên dịch vụ đã tồn tại.", "SERVICE_NAME_EXISTS");
+            throw new ConflictException("Service name already exists.", "SERVICE_NAME_EXISTS");
 
         // API key: "sfm_" + 48 byte ngẫu nhiên base64url (~64 ký tự)
         var raw = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48))
@@ -109,7 +109,7 @@ public class ServiceAccountService : IServiceAccountService
         var account = await _repo.GetByIdAsync(serviceAccountId, ct);
 
         if (account is null)
-            throw new NotFoundException("Không tìm thấy tài khoản dịch vụ.", "SERVICE_ACCOUNT_NOT_FOUND");
+            throw new NotFoundException("Service account not found.", "SERVICE_ACCOUNT_NOT_FOUND");
 
         if (account.IsRevoked)
             return;

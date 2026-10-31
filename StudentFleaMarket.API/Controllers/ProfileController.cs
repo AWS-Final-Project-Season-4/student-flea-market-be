@@ -59,7 +59,7 @@ public class ProfileController : ControllerBase
             ?? User.FindFirstValue("sub");
 
         if (!Guid.TryParse(raw, out var userId))
-            throw new UnauthorizedAccessException("Token không hợp lệ.");
+            throw new UnauthorizedAccessException("Invalid Token.");
 
         return userId;
     }

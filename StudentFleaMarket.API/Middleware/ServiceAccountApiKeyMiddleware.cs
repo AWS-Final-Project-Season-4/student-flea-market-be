@@ -72,7 +72,7 @@ public class ServiceAccountApiKeyMiddleware
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
         context.Response.ContentType = "application/json; charset=utf-8";
 
-        var body = ApiResponse.Fail("API key không hợp lệ, đã hết hạn hoặc đã bị thu hồi.", "INVALID_API_KEY");
+        var body = ApiResponse.Fail("The API key is invalid because of expired or revoked.", "INVALID_API_KEY");
 
         await context.Response.WriteAsync(JsonSerializer.Serialize(body, new JsonSerializerOptions
         {

@@ -16,9 +16,9 @@ public static class DatabaseSeeder
     /// Mật khẩu nên được đổi sau lần đăng nhập đầu tiên.
     /// </summary>
     private const string DefaultAdminUsername = "admin";
-    private const string DefaultAdminEmail = "admin@sv.edu.vn";
+    private const string DefaultAdminEmail = "admin@gmail.com";
     private const string DefaultAdminPassword = "admin123";
-    private const string DefaultAdminFullName = "Quản trị viên";
+    private const string DefaultAdminFullName = "Administrator";
 
     public static async Task SeedAsync(IServiceProvider services)
     {

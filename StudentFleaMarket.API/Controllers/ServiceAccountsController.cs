@@ -45,7 +45,7 @@ public class ServiceAccountsController : ControllerBase
     public async Task<IActionResult> Revoke(Guid id, CancellationToken ct)
     {
         await _service.RevokeAsync(id, "REVOKED_BY_ADMIN", ct);
-        return Ok(new { message = "Đã thu hồi API key." });
+        return Ok(new { message = "API key revoked successfully" });
     }
 
     private Guid? CurrentUserId()
