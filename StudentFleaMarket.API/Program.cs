@@ -171,6 +171,8 @@ builder.Services.AddSwaggerGen(options =>
             "SellerController" => "4. Quyền bán hàng (Seller)",
             "AdminSellerController" => "5. Admin - Duyệt người bán",
             "AdminUsersController" => "6. Admin - Quản lý & cấm tài khoản",
+            "ExchangeRequestsController" => "7. Yêu cầu đổi đồ",
+            "TransactionsController" => "8. Giao dịch & Thanh toán",
             _ => controllerName ?? "Khác"
         };
 
@@ -258,6 +260,40 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 // (tài khoản Admin mặc định + danh mục). Idempotent — chạy lại không ghi đè.
 if (!builder.Configuration.GetValue<bool>("SkipDatabaseSeed"))
 {
+    // ------------------------------------------- Áp dụng migration tự động
+    // Bắt buộc phải chạy TRƯỚC mọi thao tác trên DB. Nếu không, các entity
+    // mới (ExchangeRequest, Transaction, Payment) sẽ INSERT vào bảng thiếu
+    // cột -> Postgres trả 42703 "column ... does not exist" -> HTTP 500.
+    //
+    // Lưu ý: `dotnet ef database update` KHÔNG đọc được user-secrets nên
+    // không chạy được ngoài app; áp dụng tại đây dùng đúng connection
+    // string mà app đã nạp thành công.
+    //
+    // InMemory provider không hỗ trợ migration (và không cần — schema được
+    // tạo tự động theo model) nên bỏ qua.
+    if (!builder.Configuration.GetValue<bool>("UseInMemoryDatabase"))
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
+
+            if (pending.Count > 0)
+            {
+                app.Logger.LogInformation("Đang áp dụng {Count} migration chưa apply: {Migrations}",
+                    pending.Count, string.Join(", ", pending));
+                await db.Database.MigrateAsync();
+                app.Logger.LogInformation("Đã áp dụng migration thành công.");
+            }
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogError(ex, "Không áp dụng được migration. Hãy kiểm tra kết nối DB / chạy `dotnet ef database update`.");
+            throw;
+        }
+    }
+
     try
     {
         await DatabaseSeeder.SeedAsync(app.Services);
@@ -269,7 +305,8 @@ if (!builder.Configuration.GetValue<bool>("SkipDatabaseSeed"))
     }
 
     // ------------------------------------------- Backfill cột dẫn xuất (luôn chạy)
-    // Ví dụ: Items.TitleNormalized (bản bỏ dấu của Title) cho dữ liệu đã có sẵn.
+    // Ví dụ: Items.TitleNormalized (bản bỏ dấu của Title), Items.ItemCode
+    // (mã hàng 8 ký tự) cho dữ liệu đã có sẵn.
     try
     {
         using var scope = app.Services.CreateScope();

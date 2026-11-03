@@ -143,6 +143,12 @@ public class ItemSummaryDto
     public Guid Id { get; init; }
     public string Title { get; init; } = null!;
     public string Slug { get; init; } = null!;
+
+    /// <summary>
+    /// Mã hàng 8 ký tự để người dùng giao tiếp với hệ thống (mua / đổi đồ).
+    /// </summary>
+    public string ItemCode { get; init; } = null!;
+
     public decimal Price { get; init; }
     public int Condition { get; init; }
     public string ConditionName { get; init; } = null!;
@@ -178,6 +184,12 @@ public class ItemDetailDto
     public Guid Id { get; init; }
     public string Title { get; init; } = null!;
     public string Slug { get; init; } = null!;
+
+    /// <summary>
+    /// Mã hàng 8 ký tự để người dùng giao tiếp với hệ thống (mua / đổi đồ).
+    /// </summary>
+    public string ItemCode { get; init; } = null!;
+
     public string? Description { get; init; }
     public decimal Price { get; init; }
     public int Condition { get; init; }

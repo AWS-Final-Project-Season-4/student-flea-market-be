@@ -34,6 +34,11 @@ public interface IItemService
     Task<ItemDetailDto> GetBySlugAsync(string slug, Guid? userId, CancellationToken ct = default);
 
     /// <summary>
+    /// Lấy chi tiết tin đăng theo mã hàng (<c>ItemCode</c>) — mà người dùng nhập tay.
+    /// </summary>
+    Task<ItemDetailDto> GetByCodeAsync(string code, Guid? userId, CancellationToken ct = default);
+
+    /// <summary>
     /// Tìm kiếm & lọc nâng cao.
     /// </summary>
     Task<PagedResult<ItemSummaryDto>> SearchAsync(ItemSearchQueryDto query, Guid? userId, CancellationToken ct = default);

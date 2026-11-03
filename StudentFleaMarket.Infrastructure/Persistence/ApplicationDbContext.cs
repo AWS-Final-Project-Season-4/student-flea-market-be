@@ -142,6 +142,11 @@ public class AppDbContext: DbContext
             entity.Property(i => i.Location).HasMaxLength(255);
             entity.Property(i => i.IsDeleted).HasDefaultValue(false);
 
+            // ItemCode — mã hàng 8 ký tự cho người dùng giao tiếp với hệ thống.
+            // Bắt buộc duy nhất toàn hệ thống để user tra cứu không bị nhầm.
+            entity.Property(i => i.ItemCode).IsRequired().HasMaxLength(8);
+            entity.HasIndex(i => i.ItemCode).IsUnique();
+
             // Index hỗ trợ tìm kiếm & lọc nâng cao
             entity.HasIndex(i => i.Title);                       // tìm theo từ khóa tiêu đề
             entity.HasIndex(i => i.TitleNormalized);             // tìm theo từ khóa (đã bỏ dấu)
@@ -207,7 +212,15 @@ public class AppDbContext: DbContext
         {
             entity.HasKey(er => er.Id);
             entity.Property(er => er.AdditionalAmount).HasPrecision(18, 2);
-            
+            entity.Property(er => er.Note).HasMaxLength(1000);
+            entity.Property(er => er.ResponseNote).HasMaxLength(1000);
+
+            // Index phục vụ lọc theo trạng thái + thời điểm tạo.
+            entity.HasIndex(er => er.Status);
+            entity.HasIndex(er => er.CreatedAt);
+            entity.HasIndex(er => er.RequesterId);
+            entity.HasIndex(er => er.RequestedItemId);
+
             entity.HasOne(er => er.Requester)
                   .WithMany()
                   .HasForeignKey(er => er.RequesterId)
@@ -217,7 +230,7 @@ public class AppDbContext: DbContext
                   .WithMany()
                   .HasForeignKey(er => er.RequestedItemId)
                   .OnDelete(DeleteBehavior.Restrict);
-        
+
             entity.HasOne(er => er.OfferedItem)
                   .WithMany()
                   .HasForeignKey(er => er.OfferedItemId)
@@ -230,6 +243,15 @@ public class AppDbContext: DbContext
             entity.HasKey(t => t.Id);
             entity.Property(t => t.Amount).HasPrecision(18,2);
             entity.Property(t => t.MeetingLocation).IsRequired().HasMaxLength(255);
+            entity.Property(t => t.CancelReason).HasMaxLength(500);
+
+            // Index phục vụ lọc theo trạng thái / loại / thời điểm tạo.
+            entity.HasIndex(t => t.Status);
+            entity.HasIndex(t => t.Type);
+            entity.HasIndex(t => t.CreatedAt);
+            entity.HasIndex(t => t.InitiatorId);
+            entity.HasIndex(t => t.CounterpartyId);
+            entity.HasIndex(t => t.ItemId);
 
             entity.HasOne(t => t.Initiator)
                   .WithMany()
@@ -245,7 +267,7 @@ public class AppDbContext: DbContext
                   .WithMany()
                   .HasForeignKey(t => t.ItemId)
                   .OnDelete(DeleteBehavior.Restrict);
-            
+
             entity.HasOne(t => t.ExchangeRequest)
                   .WithMany()
                   .HasForeignKey(t => t.ExchangeRequestId)
@@ -258,14 +280,19 @@ public class AppDbContext: DbContext
             entity.HasKey(p => p.Id);
             entity.Property(p => p.Amount).HasPrecision(18, 2);
             entity.Property(p => p.TransactionRef).IsRequired().HasMaxLength(150);
+
+            // Index phục vụ đối soát giao dịch chuyển khoản.
+            entity.HasIndex(p => p.TransactionRef);
+            entity.HasIndex(p => p.Status);
+
             entity.HasOne(p => p.Transaction)
-                  .WithOne(t => t.Payment)
-                  .HasForeignKey<Payment>(p => p.TransactionId)
-                  .OnDelete(DeleteBehavior.Restrict);
+                .WithOne(t => t.Payment)
+                .HasForeignKey<Payment>(p => p.TransactionId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(p => p.Payer)
-                  .WithMany()
-                  .HasForeignKey(p => p.PayerId)
-                  .OnDelete(DeleteBehavior.Restrict);
+                .WithMany()
+                .HasForeignKey(p => p.PayerId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         //Conversation

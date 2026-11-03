@@ -60,9 +60,23 @@ dotnet user-secrets set "Email:Password" "<app-password>"
 
 ### 1.3 Áp dụng migration
 
+> ⚠️ **API tự động áp dụng migration khi khởi động** (`Database.MigrateAsync()` trong `Program.cs`).
+> Migration còn thiếu sẽ được apply tự động trước khi seed — không cần chạy lệnh thủ công.
+
 ```bash
 dotnet ef database update --project StudentFleaMarket.Infrastructure --startup-project StudentFleaMarket.API
 ```
+
+> 💡 Lệnh trên **không đọc được user-secrets** nên sẽ báo `28P01: password authentication failed`.
+> Nếu cần chạy thủ công, hãy truyền connection string qua biến môi trường:
+>
+> ```powershell
+> $env:ConnectionStrings__DefaultConnection = "<connection string của bạn>"
+> dotnet ef database update --project StudentFleaMarket.Infrastructure --startup-project StudentFleaMarket.API
+> ```
+>
+> Lưu ý: khi migration chưa được apply, các API ghi vào bảng mới (`ExchangeRequests`, `Transactions`, `Payments`)
+> sẽ trả **HTTP 500 `INTERNAL_ERROR`** vì Postgres báo `42703: column "..." does not exist`.
 
 Migration `AddAuthFeature` tạo bảng `RefreshTokens`, `VerificationCodes`, thêm cột `Users.CommonArea`, `Users.Dormitory` và giới hạn độ dài các cột profile.
 
@@ -79,6 +93,10 @@ Migration `AddAdminBanUser` thêm các cột quản lý cấm tài khoản trên
 Migration `AddAdminRoleGrant` thêm các cột theo dõi việc cấp quyền quản trị trên bảng `Users`: `RoleGrantedByUserId`, `RoleGrantedAt`, `RoleRevokedAt`.
 
 > Migration `RemoveAdminRoleGrant` **xoá lại** 3 cột trên (vì dự án đã bỏ tính năng cấp / gỡ quyền quản trị).
+
+Migration `AddTradingFeature` thêm cột `Transactions.CancelReason`, cột `ExchangeRequests.Note` + `ExchangeRequests.ResponseNote`, và index cho `Transactions` / `Payments` / `ExchangeRequests`.
+
+Migration `AddItemCode` thêm cột `Items.ItemCode` (8 ký tự, unique) — mã hàng cho người dùng, kèm backfill tự sinh mã cho toàn bộ tin đăng đã có. Xem [1.7 Mã hàng (ItemCode)](#17-mã-hàng-itemcode).
 
 > Không có PostgreSQL/Docker trên máy? Bật `"UseInMemoryDatabase": true` trong `appsettings.Development.json` để chạy thử nhanh (dữ liệu không persist).
 
@@ -144,6 +162,7 @@ Khi chạy ở môi trường **Development**, API tự động nạp dữ liệ
 | GET | `/api/Items/categories` | – | Danh sách danh mục kèm số lượng tin đang bán |
 | GET | `/api/Items/{id}` | – | Chi tiết tin đăng (kèm ảnh, người bán, số lượt yêu thích) |
 | GET | `/api/Items/slug/{slug}` | – | Chi tiết tin đăng theo slug (URL thân thiện) |
+| GET | `/api/Items/code/{code}` | – | Chi tiết tin đăng theo **mã hàng** (`ItemCode`, 8 ký tự A-Z0-9, không phân biệt hoa thường) |
 | GET | `/api/Items/seller/{sellerId}` | – | Tin đăng của một người bán |
 
 **Nhóm 2 — Đăng bán & quản lý tin của mình (cần token)**
@@ -571,6 +590,7 @@ Authorization: Bearer <adminAccessToken>
 | 409 | `USERNAME_EXISTS` | Tên tài khoản đã tồn tại |
 | 409 | `SERVICE_NAME_EXISTS` | Tên dịch vụ AI đã tồn tại |
 | 404 | `ITEM_NOT_FOUND` / `CATEGORY_NOT_FOUND` | Không tìm thấy tin đăng / danh mục |
+| 404 | `ITEM_CODE_NOT_FOUND` | Không tìm thấy tin đăng theo **mã hàng** (`ItemCode`) đã nhập |
 | 403 | `NOT_ITEM_OWNER` | Không phải chủ tin → không được sửa hoặc xóa tin đăng này |
 | 400 | `INVALID_PRICE_RANGE` | Giá tối thiểu lớn hơn giá tối đa |
 | 400 | `INVALID_SORT_BY` | Tiêu chí sắp xếp không hợp lệ |
@@ -621,6 +641,10 @@ POST /api/Items/sell
 | `isExchangeEnabled` | ❌ | Cho phép đổi đồ (mặc định `false`) |
 | `location` | ✅ | 2–255 ký tự — địa điểm gặp mặt trực tiếp |
 | `imageUrls` | ❌ | Tối đa 8 URL · ảnh đầu tiên là ảnh chính |
+
+> 🔑 Hệ thống **tự sinh mã hàng** (`itemCode`, 8 ký tự A-Z0-9) cho tin vừa đăng và trả về
+> trong response. Mã này **không đổi** khi sửa tin, và là thứ người dùng dùng để mua /
+> đổi đồ. Xem [1.7 Mã hàng (ItemCode)](#17-mã-hàng-itemcode).
 
 **Tìm kiếm & lọc nâng cao** — `GET /api/Items/search`
 
@@ -681,8 +705,11 @@ curl -X POST http://localhost:5033/api/Items/sell \
   -H "Content-Type: application/json" \
   -d '{"title":"May pha ca phe espresso","categoryId":9,"description":"May moi 95%","price":3500000,"condition":2,"isExchangeEnabled":true,"location":"KTX Khu A"}'
 
-# 4. Xem tin của mình (gồm cả tin đã gỡ / đã bán)
+# 4. Xem tin của mình (gồm cả tin đã gỡ / đã bán) — chú ý trường `itemCode`
 curl http://localhost:5033/api/Items/sell/mine -H "Authorization: Bearer <accessToken>"
+
+# 4b. Tra cứu tin đăng theo MÃ HÀNG (8 ký tự, không phân biệt hoa thường)
+curl http://localhost:5033/api/Items/code/<ma8KyTu>
 
 # 5. Gỡ bán
 curl -X DELETE http://localhost:5033/api/Items/sell/<itemId> -H "Authorization: Bearer <accessToken>"
@@ -735,7 +762,50 @@ curl -X POST http://localhost:5033/api/Admin/seller-requests/<minhUserId>/approv
 > ⚠️ Demo user (`minh`, `linh`, `tu`) được seed với `SellerStatus = Approved` sẵn để luồng đăng bán không bị chặn. Muốn test luồng duyệt thì dùng bước 6 để thu hồi quyền trước.
 
 
-### 1.7 Ghi chú bảo mật
+### 1.7 Mã hàng (ItemCode)
+
+Mỗi tin đăng có **hai định danh**, nằm cùng trên bảng `Items`:
+
+| Cột | Kiểu | Ai dùng | Ví dụ |
+|-----|------|---------|-------|
+| `Id` | `Guid` | **Database** — khoá chính + khoá ngoại ở 6 bảng khác (`ItemImages`, `Favorites`, `ExchangeRequests`, `Transactions`, `Conversations`, `Reports`) | `70ce3700-dcb4-4fff-95be-3cfcdd4399db` |
+| `ItemCode` | `string(8)` | **Người dùng** — mã hàng để giao tiếp với hệ thống (mua / đổi đồ) | `RNSCSLTM` |
+
+> 💡 **Vì sao cần cả hai?**
+> - `Id` = "CMND" của tin đăng trong hệ thống — ổn định, không lộ ra ngoài.
+> - `ItemCode` = mã hàng người dùng trao đổi — ngắn (8 ký tự), dễ đọc, dễ gõ, dễ nhớ.
+>
+> `ItemCode` là **business key**, không phải khoá ngoại. Mọi khoá ngoại vẫn trỏ tới `Id`
+> → thêm `ItemCode` **không phải sửa lại** bất kỳ khoá ngoại nào.
+
+**Đặc tính của `ItemCode`**
+
+| Đặc tính | Mô tả |
+|----------|-------|
+| Sinh tự động | Khi người bán đăng tin (`POST /api/Items/sell`) — user **không** tự chọn được |
+| Bất biến | **Không** đổi khi sửa tiêu đề / giá / ảnh. `Slug` thì có (được sinh lại theo tiêu đề) → không dùng `Slug` làm mã |
+| Định dạng | Đúng **8 ký tự**, chỉ gồm **chữ cái A-Z** và **chữ số 0-9** (36 ký tự, ~2.8 triệu tổ hợp) |
+| Không ký tự đặc biệt | Không có `-`, `_`, khoảng trắng → user gõ / đọc không bị nhầm |
+| Duy nhất toàn hệ thống | Unique index `IX_Items_ItemCode` |
+| Không phân biệt hoa thường | Gõ `rnscsltm` vẫn khớp `RNSCSLTM` (được chuẩn hóa trước khi truy vấn) |
+
+**Nơi dùng `ItemCode`**
+
+| Ngữ cảnh | Trường / Endpoint |
+|----------|------------------|
+| Gửi yêu cầu đổi đồ | `POST /api/ExchangeRequests` → `requestedItemCode`, `offeredItemCode` |
+| Mua trực tiếp | `POST /api/Transactions/purchase` → `itemCode` |
+| Tra cứu tin đăng | `GET /api/Items/code/{code}` |
+| Hiển thị | `ItemSummaryDto.itemCode`, `ItemDetailDto.itemCode`, `TradingItemDto.itemCode` |
+| Email thông báo | Mã hàng của cả 2 món đồ được in trong email (để 2 bên trao đổi mã khi gặp) |
+
+> ⚠️ `ItemCode` **đoán được** (8 ký tự, 36^8 tổ hợp nhưng không phải mã bí mật).
+> Vì vậy các luật quyền vẫn được kiểm tra đầy đủ: mã tồn tại nhưng không phải của bạn
+> → `403 NOT_ITEM_OWNER`; mã của tin đã gỡ → `404 ITEM_CODE_NOT_FOUND` (global query filter).
+
+---
+
+### 1.8 Ghi chú bảo mật
 
 - Mật khẩu băm bằng **PBKDF2** (ASP.NET Core Identity), không lưu plaintext.
 - Refresh token, OTP & API key chỉ lưu **SHA-256 hash** trong DB — lộ DB cũng không lấy được token dùng được.
@@ -788,7 +858,7 @@ curl -X POST http://localhost:5033/api/Admin/seller-requests/<minhUserId>/approv
 > Kiểm tra nhanh: mở `/swagger/v1/swagger.json`, phần `"security"` cuối file phải là `"Bearer": []` — **không phải** `"Bearer#/components/securitySchemes/Bearer"`.
 > Nguyên nhân: `OpenApiSecuritySchemeReference(referenceId, hostDocument, externalResource)` — tham số thứ 3 là **externalResource**, truyền `"Bearer"` sẽ ghép thành `Bearer#/components/securitySchemes/Bearer`. Phải truyền `null`.
 
-### 1.8 Tài khoản mặc định (seed)
+### 1.9 Tài khoản mặc định (seed)
 
 | Username | Email | Mật khẩu | Vai trò |
 |----------|-------|----------|---------|
@@ -799,3 +869,211 @@ curl -X POST http://localhost:5033/api/Admin/seller-requests/<minhUserId>/approv
 > Bỏ qua seed: đặt `"SkipDatabaseSeed": true` trong `appsettings.Development.json`.
 
 > ℹ️ Khi bỏ seed demo + xóa dữ liệu cũ, các tài khoản mới đăng ký sẽ có `SellerStatus = None` và **phải được Admin duyệt** trước khi đăng tin bán.
+
+---
+
+## 🔄 Feature 3 — Trao đổi & Giao dịch (Trading & Transactions)
+
+### 3.1 Cấu trúc mã nguồn
+
+| Layer | Thành phần mới |
+|-------|----------------|
+| **Domain** | `ExchangeRequest`, `Transaction`, `Payment` (mở rộng: `Note`, `ResponseNote`, `CancelReason`) · Enum `PaymentMethod` (mới), `ExchangeRequestStatus`, `TransactionStatus`, `TransactionType`, `PaymentStatus` |
+| **Application** | `IExchangeRequestService` / `ExchangeRequestService`, `ITransactionService` / `TransactionService` · DTO + FluentValidation trong `DTOs/Trading/` · `IExchangeRequestRepository`, `ITransactionRepository`, `IPaymentRepository` |
+| **Infrastructure** | `ExchangeRequestRepository`, `TransactionRepository`, `PaymentRepository` · Index trong `AppDbContext` · DI extension · Seed dữ liệu giao dịch demo |
+| **API** | `ExchangeRequestsController` (Swagger tag 7), `TransactionsController` (Swagger tag 8) |
+
+### 3.2 Yêu cầu đổi đồ (Exchange Request)
+
+**Gửi yêu cầu** — `POST /api/ExchangeRequests`
+
+```json
+{
+  "requestedItemCode": "MA8CODE-cua-tin-ben-kia-muon-nhan",
+  "offeredItemCode":   "MA8CODE-cua-tin-cua-ban-dem-doi",
+  "additionalAmount": 50000,
+  "note": "Tôi có thể giao dịch lúc 17h ở KTX A"
+}
+```
+
+| Trường | Bắt buộc | Quy tắc |
+|---------|-----------|---------|
+| `requestedItemCode` | ✅ | **Mã hàng** (8 ký tự A-Z0-9) của tin **bên kia** muốn nhận — phải còn "Đang bán" **vã** có `isExchangeEnabled = true` |
+| `offeredItemCode` | ✅ | **Mã hàng** của tin **của chính bạn** dùng để đề nghị đổi lấy — phải còn "Đang bán" |
+| `additionalAmount` | ❌ | Tiền bù chênh lệch · ≥ 0 · ≤ 100.000.000 (mặc định `0`) |
+| `note` | ❌ | Ghi chú thương lượng · ≤ 1000 ký tự |
+
+> 💡 **Dùng MÃ HÀNG, không dùng Guid.**
+> Mỗi tin đăng có một `ItemCode` 8 ký tự (chữ cái + chữ số, ví dụ `RNSCSLTM`) do hệ thống tự sinh
+> khi đăng bán. Mã **không đổi** khi sửa tiêu đề. Mã không phân biệt hoa thường.
+> Xem chi tiết ở mục [1.7 Mã hàng (ItemCode)](#17-mã-hàng-itemcode).
+
+> 💡 **Ý nghĩa `RequestedItem` ⇄ `OfferedItem`**
+> - `RequestedItem` = món đồ của **người nhận yêu cầu** (người bán) — thứ bạn muốn nhận.
+> - `OfferedItem` = món đồ của **chính bạn** (người gửi) — thứ bạn đem đổi lấy.
+> - Người gửi = `Requester`; người nhận = chủ của `RequestedItem` → **chỉ người nhận mới accept / reject**.
+
+| Lỗi | HTTP | Mã lỗi |
+|-----|------|--------|
+| Mã hàng không tồn tại | 404 | `ITEM_CODE_NOT_FOUND` |
+| Mã sai định dạng (≠ 8 ký tự A-Z0-9) | 400 | `VALIDATION_ERROR` |
+| Món đồ đem đổi không phải của bạn | 403 | `NOT_ITEM_OWNER` |
+| Món đồ không bật cho phép đổi | 400 | `ITEM_NOT_EXCHANGEABLE` |
+| Món đồ đã có yêu cầu đang chờ | 409 | `ITEM_ALREADY_HAS_EXCHANGE_REQUEST` |
+
+**Phản hồi & hủy**
+
+| Endpoint | Ai được gọi | Tác dụng |
+|----------|-------------|----------|
+| `POST /api/ExchangeRequests/{id}/accept` | Chủ `RequestedItem` | Chấp nhận → `Status = Accepted` (2) |
+| `POST /api/ExchangeRequests/{id}/reject` | Chủ `RequestedItem` | Từ chối → `Status = Rejected` (3) |
+| `POST /api/ExchangeRequests/{id}/cancel` | Người gửi (`Requester`) | Hủy yêu cầu → `Status = Cancelled` (4) |
+
+Cả 3 endpoint đều nhận body tùy chọn `{ "note": "..." }` (ghi chú phản hồi, ≤ 1000 ký tự).
+
+**Truy vấn danh sách** — `GET /api/ExchangeRequests`
+
+| Query param | Kiểu | Mô tả |
+|-------------|------|-------|
+| `status` | int | `1`=Đang chờ phản hồi · `2`=Đã chấp nhận · `3`=Bị từ chối · `4`=Đã hủy · `5`=Đã hết hạn |
+| `direction` | string | `incoming` = người khác gửi cho bạn · `outgoing` = bạn đã gửi · bỏ trống = cả hai |
+| `page` / `pageSize` | int | Phân trang — `pageSize` tối đa 100, mặc định 20 |
+
+> 🔒 **Chỉ 2 bên liên quan được xem** yêu cầu đổi đồ → người thứ 3 nhận **403 `NOT_EXCHANGE_REQUEST_PARTICIPANT`**.
+
+### 3.3 Đơn giao dịch (Transaction) & Thanh toán
+
+**Khởi tạo đơn**
+
+| Endpoint | Loại | Mô tả |
+|----------|------|-------|
+| `POST /api/Transactions/purchase` | `Purchase` (1) | Mua trực tiếp — người mua chốt mua 1 tin đăng |
+| `POST /api/Transactions/exchange` | `Exchange` (2) | Hoàn tất đổi đồ — chỉ tạo được từ yêu cầu đã `Accepted` |
+
+```jsonc
+// POST /api/Transactions/purchase
+{
+  "itemCode": "MA8CODE-tin-dang-mua",      // mã hàng 8 ký tự A-Z0-9
+  "meetingLocation": "KTX Khu A - Cổng 1",  // bỏ trống -> lấy từ tin đăng
+  "paymentMethod": 1,                     // 1 = COD, 2 = BankTransfer
+  "amount": 75000                         // bỏ trống -> giá niêm yết của tin đăng
+}
+
+// POST /api/Transactions/exchange
+{
+  "exchangeRequestId": "guid-yeu-cau-da-accepted",
+  "meetingLocation": "KTX Khu A - Cổng 1",
+  "paymentMethod": 2,
+  "amount": 50000                         // bỏ trống -> AdditionalAmount của yêu cầu
+}
+```
+
+**Vòng đời đơn**
+
+```
+Pending (Đang xử lý) ──complete──> Completed (Hoàn thành)   → tin đánh dấu "Đã bán"
+        │
+        └──cancel────> Cancelled (Đã hủy giao dịch)            → tin trở lại "Đang bán"
+```
+
+| Endpoint | Ai được gọi | Tác dụng |
+|----------|-------------|----------|
+| `POST /api/Transactions/{id}/complete` | 1 trong 2 bên | Hoàn thành → `Status = Completed` (5) |
+| `POST /api/Transactions/{id}/cancel` | 1 trong 2 bên | Hủy → `Status = Cancelled` (4), lưu `cancelReason` |
+| `POST /api/Transactions/{id}/payment` | **Người trả tiền** | Xác nhận đã thanh toán → `Payment.Status = Paid` (2) |
+
+**Phương thức thanh toán** (`PaymentMethod`)
+
+| Giá trị | Tên | Mô tả |
+|---------|-----|-------|
+| `1` | **COD** | Trả tiền mặt khi gặp nhận đồ (mặc định — phù hợp sàn sinh viên) |
+| `2` | **BankTransfer** | Chuyển khoản qua QR ngân hàng / cổng thanh toán — hệ thống sinh `transactionRef` để đối soát |
+
+**Truy vấn danh sách** — `GET /api/Transactions`
+
+| Query param | Kiểu | Mô tả |
+|-------------|------|-------|
+| `status` | int | `1`=Đang xử lý · `2`=Đã thỏa thuận · `3`=Đã từ chối · `4`=Đã hủy · `5`=Đã hoàn thành |
+| `type` | int | `1`=Mua trực tiếp · `2`=Đổi đồ · `3`=Nhận miễn phí |
+| `direction` | string | `incoming` = đơn người khác mở với bạn · `outgoing` = đơn bạn mở |
+| `page` / `pageSize` | int | Phân trang |
+
+### 3.4 Quy tắc nghiệp vụ & mã lỗi
+
+| Quy tắc | Mã lỗi | HTTP |
+|---------|---------|------|
+| Đổi lấy chính món đồ của mình | `CANNOT_EXCHANGE_OWN_ITEM` | 400 |
+| Món đồ không bật "cho phép đổi đồ" | `ITEM_NOT_EXCHANGEABLE` | 400 |
+| Món đồ không còn "Đang bán" | `ITEM_NOT_AVAILABLE` / `OFFERED_ITEM_NOT_AVAILABLE` | 400 |
+| Đem đổi bằng tin **không phải của mình** | `NOT_ITEM_OWNER` | 403 |
+| Gửi trùng cặp (món đồ nhận, món đồ đổi) | `EXCHANGE_REQUEST_ALREADY_EXISTS` | 409 |
+| Món đồ đã có người khác đề nghị đổi | `ITEM_ALREADY_HAS_EXCHANGE_REQUEST` | 409 |
+| Người thứ 3 xem yêu cầu | `NOT_EXCHANGE_REQUEST_PARTICIPANT` | 403 |
+| Người không phải chủ tin accept / reject | `NOT_EXCHANGE_REQUEST_OWNER` | 403 |
+| Thao tác lại trên yêu cầu đã trả lời | `EXCHANGE_REQUEST_NOT_PENDING` | 409 |
+| Tạo đơn từ yêu cầu chưa được accept | `EXCHANGE_REQUEST_NOT_ACCEPTED` | 400 |
+| 1 yêu cầu → nhiều đơn | `TRANSACTION_ALREADY_EXISTS` | 409 |
+| Tin đã có đơn đang xử lý | `ITEM_ALREADY_HAS_TRANSACTION` | 409 |
+| Mua chính tin của mình | `CANNOT_BUY_OWN_ITEM` | 400 |
+| Người không phải trả tiền xác nhận thanh toán | `NOT_PAYMENT_PAYER` | 403 |
+| Thanh toán 2 lần | `PAYMENT_ALREADY_PAID` | 409 |
+| Hoàn thành / hủy đơn không ở trạng thái "Đang xử lý" | `TRANSACTION_NOT_PENDING` | 409 |
+| Người thứ 3 thao tác đơn | `NOT_TRANSACTION_PARTICIPANT` | 403 |
+
+> 🔒 **Tài khoản dịch vụ AI** (`AiService`) không được gửi yêu cầu đổi đồ hay tạo đơn → `403 AI_CANNOT_EXCHANGE` / `403 AI_CANNOT_TRANSACT`.
+
+### 3.5 Test nhanh với dữ liệu demo
+
+```bash
+# 1. Đăng nhập 2 demo user
+curl -X POST http://localhost:5033/api/Auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"identifier":"minh","password":"123456"}'
+
+# 2. Xem các yêu cầu đổi đồ đã nhận / đã gửi
+curl "http://localhost:5033/api/ExchangeRequests?direction=incoming" \
+  -H "Authorization: Bearer <linhAccessToken>"
+
+# 3. Chấp nhận yêu cầu (chỉ chủ tin được nhận)
+curl -X POST http://localhost:5033/api/ExchangeRequests/<id>/accept \
+  -H "Authorization: Bearer <linhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"note":"OK, giao lúc 17h KTX A"}'
+
+# 4. Tạo đơn hoàn tất đổi đồ (người gửi yêu cầu)
+curl -X POST http://localhost:5033/api/Transactions/exchange \
+  -H "Authorization: Bearer <minhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"exchangeRequestId":"<erId>","meetingLocation":"KTX Khu A","paymentMethod":2}'
+
+# 5. Xác nhận đã thanh toán (chỉ người trả tiền)
+curl -X POST http://localhost:5033/api/Transactions/<txId>/payment \
+  -H "Authorization: Bearer <minhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"transactionRef":"MB-99887766"}'
+
+# 6. Hoàn thành giao dịch -> tin đánh dấu "Đã bán"
+curl -X POST http://localhost:5033/api/Transactions/<txId>/complete \
+  -H "Authorization: Bearer <minhAccessToken>"
+
+# 7. Mua trực tiếp (COD)
+curl -X POST http://localhost:5033/api/Transactions/purchase \
+  -H "Authorization: Bearer <linhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"itemCode":"<ma8KyTu>","meetingLocation":"Canteen B","paymentMethod":1}'
+```
+
+**Kết quả mong đợi:**
+
+| Bước | Kết quả |
+|------|---------|
+| Seed | 1 yêu cầu đổi đồ "Đang chờ phản hồi" + 1 đơn mua trực tiếp "Đang xử lý" |
+| Bước 3 | `status = 2` (Đã được chấp nhận) |
+| Bước 4 | `201` + `type = 2` (Đổi đồ), `status = 1` (Đang xử lý), `payment.method = 2` |
+| Bước 5 | `payment.status = 2` (Đã thanh toán) — đơn **vẫn** "Đang xử lý" |
+| Bước 6 | `status = 5` (Đã hoàn thành) + tin đăng chuyển `status = 4` (Đã bán) |
+| Bước 6 (lại) | `409 TRANSACTION_NOT_PENDING` |
+| Bước 7 | `201` + `type = 1` (Mua trực tiếp), `payment.method = 1` (COD) |
+| Mua trùng một tin | `409 ITEM_ALREADY_HAS_TRANSACTION` |
+
+> 💡 Với đơn **đổi đồ**, khi hoàn thành thì **cả hai** món đồ đều chuyển sang `status = 4` (Đã bán) và món đồ được nhận **đổi chủ** sang người gửi yêu cầu — đúng nghĩa "đã trao đổi xong".

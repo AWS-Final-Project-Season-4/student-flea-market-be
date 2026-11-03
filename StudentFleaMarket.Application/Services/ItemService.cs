@@ -56,6 +56,8 @@ public class ItemService : IItemService
             Title = request.Title.Trim(),
             Slug = SlugHelper.GenerateUnique(request.Title),
             TitleNormalized = SlugHelper.NormalizeForSearch(request.Title),
+            // Mã hàng cho người dùng — sinh tự động, không cho user chọn.
+            ItemCode = await GenerateUniqueItemCodeAsync(ct),
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
             Price = request.Price,
             Condition = request.Condition,
@@ -222,6 +224,20 @@ public class ItemService : IItemService
         return await BuildDetailDto(item, item.Category, seller, favCount, isFav);
     }
 
+    public async Task<ItemDetailDto> GetByCodeAsync(string code, Guid? userId, CancellationToken ct = default)
+    {
+        var item = await _itemRepo.GetByCodeAsync(code, ct)
+            ?? throw new NotFoundException(
+                $"Không tìm thấy tin đăng có mã \"{ItemCodeHelper.Normalize(code)}\".",
+                "ITEM_CODE_NOT_FOUND");
+
+        var seller = await _userRepo.GetByIdAsync(item.SellerId, ct);
+        var favCount = await _favoriteRepo.CountByItemAsync(item.Id, ct);
+        var isFav = userId.HasValue && await _favoriteRepo.ExistsAsync(userId.Value, item.Id, ct);
+
+        return await BuildDetailDto(item, item.Category, seller, favCount, isFav);
+    }
+
     // ------------------------------------------------------------ SEARCH
     public async Task<PagedResult<ItemSummaryDto>> SearchAsync(
         ItemSearchQueryDto query,
@@ -298,6 +314,27 @@ public class ItemService : IItemService
     }
 
     // ------------------------------------------------------------ HELPERS
+
+    /// <summary>
+    /// Sinh mã hàng (<c>ItemCode</c>) chắc chắn chưa tồn tại trong DB.
+    ///
+    /// Mã có 8 ký tự từ 36 ký tự (A-Z, 0-9) -> 36^8 ≈ 2.8 triệu tổ hợp, nên
+    /// xác suất trùng rất thấp; vẫn vòng lặc tới khi tìm được mã chưa có.
+    /// </summary>
+    private async Task<string> GenerateUniqueItemCodeAsync(CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var code = ItemCodeHelper.Generate();
+            if (!await _itemRepo.ExistsByCodeAsync(code, ct))
+                return code;
+        }
+
+        // Rất hiếm gặp (xác suất cực nhỏ) -> báo lỗi thay vì tạo mã trùng.
+        throw new InvalidOperationException(
+            "Không thể sinh mã hàng duy nhất. Vui lòng thử lại.");
+    }
+
     private static List<string> NormalizeImageUrls(List<string>? urls)
     {
         if (urls is null || urls.Count == 0)
@@ -323,6 +360,7 @@ public class ItemService : IItemService
             Id = item.Id,
             Title = item.Title,
             Slug = item.Slug,
+            ItemCode = item.ItemCode,
             Price = item.Price,
             Condition = item.Condition,
             ConditionName = ItemEnumLabels.ConditionName(item.Condition),
@@ -358,6 +396,7 @@ public class ItemService : IItemService
             Id = item.Id,
             Title = item.Title,
             Slug = item.Slug,
+            ItemCode = item.ItemCode,
             Description = item.Description,
             Price = item.Price,
             Condition = item.Condition,

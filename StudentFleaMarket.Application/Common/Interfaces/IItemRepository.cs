@@ -32,6 +32,19 @@ public interface IItemRepository : IRepository<Item>
     Task<Item?> GetBySlugAsync(string slug, CancellationToken ct = default);
 
     /// <summary>
+    /// Lấy tin đăng theo mã hàng (<c>ItemCode</c>) — mà người dùng nhập tay.
+    ///
+    /// Mã được chuẩn hóa (trim + uppercase) trước khi truy vấn để user gõ
+    /// "ab12cd34" vẫn khớp với "AB12CD34" đã lưu.
+    /// </summary>
+    Task<Item?> GetByCodeAsync(string code, CancellationToken ct = default);
+
+    /// <summary>
+    /// Kiểm tra mã hàng đã tồn tại chưa (dùng khi sinh mã mới để tránh trùng).
+    /// </summary>
+    Task<bool> ExistsByCodeAsync(string code, CancellationToken ct = default);
+
+    /// <summary>
     /// Lấy ảnh của tin đăng (tracked) — dùng khi cần cập nhật / xóa ảnh.
     /// </summary>
     Task<List<ItemImage>> GetImagesAsync(Guid itemId, CancellationToken ct = default);

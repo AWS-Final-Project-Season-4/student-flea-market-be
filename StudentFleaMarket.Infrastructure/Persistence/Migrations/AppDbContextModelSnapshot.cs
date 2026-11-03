@@ -220,6 +220,10 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<Guid>("OfferedItemId")
                         .HasColumnType("uuid");
 
@@ -232,16 +236,24 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("RespondedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ResponseNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
 
                     b.HasIndex("OfferedItemId");
 
                     b.HasIndex("RequestedItemId");
 
                     b.HasIndex("RequesterId");
+
+                    b.HasIndex("Status");
 
                     b.ToTable("ExchangeRequests");
                 });
@@ -297,6 +309,11 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsExchangeEnabled")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("ItemCode")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<string>("Location")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -336,6 +353,9 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.HasIndex("Condition");
 
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("ItemCode")
+                        .IsUnique();
 
                     b.HasIndex("Price");
 
@@ -454,8 +474,12 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("PayerId");
 
+                    b.HasIndex("Status");
+
                     b.HasIndex("TransactionId")
                         .IsUnique();
+
+                    b.HasIndex("TransactionRef");
 
                     b.ToTable("Payments");
                 });
@@ -658,6 +682,10 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -694,11 +722,17 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CounterpartyId");
 
+                    b.HasIndex("CreatedAt");
+
                     b.HasIndex("ExchangeRequestId");
 
                     b.HasIndex("InitiatorId");
 
                     b.HasIndex("ItemId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("Type");
 
                     b.ToTable("Transactions");
                 });

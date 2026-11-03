@@ -60,13 +60,28 @@ public class ItemsController : ControllerBase
     }
 
     /// <summary>
-    /// Chi tiết tin đăng theo slug (URL thân thiện).
+    /// Lấy chi tiết tin đăng theo slug (URL thân thiện).
     /// </summary>
     [HttpGet("slug/{slug}")]
     [AllowAnonymous]
     public async Task<IActionResult> GetBySlug(string slug, CancellationToken ct)
     {
         var item = await _itemService.GetBySlugAsync(slug, GetOptionalUserId(), ct);
+        return Ok(item);
+    }
+
+    /// <summary>
+    /// Lấy chi tiết tin đăng theo MÃ HÀNG (<c>ItemCode</c>).
+    ///
+    /// Đây là endpoint dành cho người dùng: họ nhập mã 8 ký tự in trên tin đăng
+    /// để tra cứu nhanh, không phải gõ GUID 36 ký tự.
+    /// Mã không phân biệt hoa thường.
+    /// </summary>
+    [HttpGet("code/{code}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetByCode(string code, CancellationToken ct)
+    {
+        var item = await _itemService.GetByCodeAsync(code, GetOptionalUserId(), ct);
         return Ok(item);
     }
 

@@ -132,6 +132,24 @@ public class ItemRepository : EfRepository<Item>, IItemRepository
             .Include(i => i.Images)
             .FirstOrDefaultAsync(i => i.Slug == slug, ct);
 
+    public Task<Item?> GetByCodeAsync(string code, CancellationToken ct = default)
+    {
+        var normalized = ItemCodeHelper.Normalize(code);
+
+        return DbSet
+            .AsNoTracking()
+            .Include(i => i.Category)
+            .Include(i => i.Seller)
+            .Include(i => i.Images)
+            .FirstOrDefaultAsync(i => i.ItemCode == normalized, ct);
+    }
+
+    public Task<bool> ExistsByCodeAsync(string code, CancellationToken ct = default)
+    {
+        var normalized = ItemCodeHelper.Normalize(code);
+        return DbSet.AnyAsync(i => i.ItemCode == normalized, ct);
+    }
+
     public Task<int> CountByCategoryAsync(int categoryId, CancellationToken ct = default)
         => DbSet.CountAsync(i => i.CategoryId == categoryId, ct);
 
