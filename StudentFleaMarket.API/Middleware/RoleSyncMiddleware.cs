@@ -1,6 +1,6 @@
 using System.Security.Claims;
 using StudentFleaMarket.Application.Common.Interfaces;
-using StudentFleaMarket.Domain.Enums;
+using StudentFleaMarket.Domain.Common;
 
 namespace StudentFleaMarket.API.Middleware;
 
@@ -36,7 +36,7 @@ public class RoleSyncMiddleware
     public async Task InvokeAsync(HttpContext context, IUserRepository userRepo)
     {
         if (context.User.Identity?.IsAuthenticated == true
-            && !context.User.IsInRole("AiService"))
+            && !context.User.IsInRole(RoleNames.AiService))
         {
             var raw = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
                 ?? context.User.FindFirstValue("sub");
@@ -80,11 +80,7 @@ public class RoleSyncMiddleware
 
     /// <summary>
     /// Tên role dùng cho [Authorize(Roles = "...")].
+    /// Nguồn sự thật duy nhất: <see cref="RoleNames"/> (Domain).
     /// </summary>
-    private static string RoleNameOf(int role) => role switch
-    {
-        (int)UserRole.Admin => "Admin",
-        (int)UserRole.AiService => "AiService",
-        _ => "User"
-    };
+    private static string RoleNameOf(int role) => RoleNames.Of(role);
 }

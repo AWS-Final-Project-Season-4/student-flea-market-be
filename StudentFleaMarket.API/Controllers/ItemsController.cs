@@ -13,7 +13,7 @@ namespace StudentFleaMarket.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/Items")]
-[Authorize(Roles = "User, Admin")]
+[Authorize(Roles = "User, Admin, Moderator")]
 [Produces("application/json")]
 public class ItemsController : ControllerBase
 {

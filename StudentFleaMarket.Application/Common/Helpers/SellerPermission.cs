@@ -14,9 +14,11 @@ namespace StudentFleaMarket.Application.Common.Helpers;
 ///   Gom vào đây để đổi luật chỉ sửa 1 chỗ.
 ///
 /// LUẬT:
-///   - Tài khoản Admin  -> luôn được phép (Admin là bên quản lý, không cần
+///   - Tài khoản Admin      -> luôn được phép (Admin là bên quản lý, không cần
 ///     tự xin duyệt; xem SellerService.RequestAsync -> ADMIN_ALREADY_CAN_SELL).
-///   - Tài khoản User   -> CHỈ được phép khi SellerStatus = Approved, tức là
+///   - Tài khoản Moderator  -> luôn được phép (kiểm duyệt viên là nhân viên,
+///     cần đăng tin để kiểm tra nội dung mà không cần chờ duyệt).
+///   - Tài khoản User       -> CHỈ được phép khi SellerStatus = Approved, tức là
 ///     đã được Admin duyệt qua POST /api/Admin/seller-requests/{id}/approve.
 ///   - Tài khoản dịch vụ AI -> không được phép (đã chặn riêng ở ItemService).
 ///
@@ -30,6 +32,7 @@ public static class SellerPermission
     /// </summary>
     public static bool CanSell(ApplicationUser user)
         => user.Role == (int)UserRole.Admin
+           || user.Role == (int)UserRole.Moderator
            || user.SellerStatus == (int)SellerStatus.Approved;
 
     /// <summary>

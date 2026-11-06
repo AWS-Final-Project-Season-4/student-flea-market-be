@@ -21,6 +21,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFavoriteService, FavoriteService>();
         services.AddScoped<ISellerService, SellerService>();
         services.AddScoped<IAdminUserService, AdminUserService>();
+        services.AddScoped<IModeratorService, ModeratorService>();
         services.AddScoped<IExchangeRequestService, ExchangeRequestService>();
         services.AddScoped<ITransactionService, TransactionService>();
 

@@ -19,5 +19,19 @@ public enum UserRole
     /// Dịch vụ AI (kiểm duyệt, gợi ý sản phẩm, hỗ trợ hội thoại...).
     /// Không đăng nhập bằng email/password — xác thực bằng API key.
     /// </summary>
-    AiService = 2
+    AiService = 2,
+
+    /// <summary>
+    /// Kiểm duyệt viên — nhân viên trực, chia sẻ công việc với Admin khi Admin bận.
+    ///
+    /// PHẠM VI QUYỀN (xem thêm <c>StaffPermission</c> ở tầng Application):
+    ///   - Được duyệt / từ chối / thu hồi quyền bán (giống Admin).
+    ///   - Được cấm / gỡ cấm tài khoản THƯỜNG.
+    ///   - Được gỡ tin đăng vi phạm (không phải tin của chính mình).
+    ///   - KHÔNG được cấm tài khoản Moderator khác (chỉ Admin được).
+    ///   - KHÔNG được cấm tài khoản Admin (không ai được).
+    ///   - KHÔNG được quản lý tài khoản dịch vụ AI (chỉ Admin được).
+    ///   - KHÔNG được cấp / thu hồi role cho người khác (chỉ Admin được).
+    /// </summary>
+    Moderator = 3
 }

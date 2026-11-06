@@ -169,10 +169,11 @@ builder.Services.AddSwaggerGen(options =>
             "ItemsForSaleController" => "2. Đăng bán & Quản lý tin",
             "FavoritesController" => "3. Yêu thích (Wishlist)",
             "SellerController" => "4. Quyền bán hàng (Seller)",
-            "AdminSellerController" => "5. Admin - Duyệt người bán",
-            "AdminUsersController" => "6. Admin - Quản lý & cấm tài khoản",
-            "ExchangeRequestsController" => "7. Yêu cầu đổi đồ",
-            "TransactionsController" => "8. Giao dịch & Thanh toán",
+            "AdminSellerController" => "5. Quản trị - Duyệt người bán",
+            "AdminUsersController" => "6. Quản trị - Quản lý & cấm tài khoản",
+            "AdminModeratorsController" => "7. Quản trị - Kiểm duyệt viên (Moderator)",
+            "ExchangeRequestsController" => "8. Yêu cầu đổi đồ",
+            "TransactionsController" => "9. Giao dịch & Thanh toán",
             _ => controllerName ?? "Khác"
         };
 

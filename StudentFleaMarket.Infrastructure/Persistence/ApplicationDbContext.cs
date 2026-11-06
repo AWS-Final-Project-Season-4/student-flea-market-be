@@ -70,6 +70,13 @@ public class AppDbContext: DbContext
                 .WithMany()
                 .HasForeignKey(u => u.BannedByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            // ----- Cấp / thu hồi role kiểm duyệt viên (Moderator) -----
+            // Admin cấp role -> không xoá lịch sử khi Admin bị xoá.
+            entity.HasOne(u => u.RoleGrantedBy)
+                .WithMany()
+                .HasForeignKey(u => u.RoleGrantedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         //ServiceAccount (AI Service — xác thực bằng API key)

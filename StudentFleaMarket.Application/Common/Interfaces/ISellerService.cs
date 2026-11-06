@@ -14,6 +14,9 @@ namespace StudentFleaMarket.Application.Common.Interfaces;
 ///   2. Admin duyệt       -> ApproveAsync        (SellerStatus = Approved)
 ///   3. Admin từ chối     -> RejectAsync         (SellerStatus = Rejected)
 ///   4. Admin thu hồi     -> RevokeAsync         (SellerStatus = None)
+///
+/// Admin và Moderator (kiểm duyệt viên) đều thực hiện được các thao tác
+/// duyệt / từ chối / thu hồi ở bước 2-4.
 /// </summary>
 public interface ISellerService
 {
@@ -42,12 +45,12 @@ public interface ISellerService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Admin cấp quyền bán cho một tài khoản.
+    /// Admin / Moderator cấp quyền bán cho một tài khoản.
     /// </summary>
     Task<AdminSellerRequestDto> ApproveAsync(Guid adminUserId, Guid targetUserId, CancellationToken ct = default);
 
     /// <summary>
-    /// Admin từ chối yêu cầu trở thành người bán.
+    /// Admin / Moderator từ chối yêu cầu trở thành người bán.
     /// </summary>
     Task<AdminSellerRequestDto> RejectAsync(
         Guid adminUserId,
@@ -56,7 +59,7 @@ public interface ISellerService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Admin thu hồi quyền bán đã cấp (đưa về trạng thái chưa được cấp quyền).
+    /// Admin / Moderator thu hồi quyền bán đã cấp (đưa về trạng thái chưa được cấp quyền).
     /// </summary>
     Task<AdminSellerRequestDto> RevokeAsync(Guid adminUserId, Guid targetUserId, CancellationToken ct = default);
 }

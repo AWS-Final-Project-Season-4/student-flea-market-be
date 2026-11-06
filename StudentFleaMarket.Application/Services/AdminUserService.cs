@@ -4,18 +4,25 @@ using StudentFleaMarket.Application.Common.Helpers;
 using StudentFleaMarket.Application.Common.Interfaces;
 using StudentFleaMarket.Application.DTOs.Admin;
 using StudentFleaMarket.Domain.Entities;
+using StudentFleaMarket.Domain.Common;
 using StudentFleaMarket.Domain.Enums;
 
 namespace StudentFleaMarket.Application.Services;
 
-/// <summary>
-/// Quản lý tài khoản người dùng phía Admin: xem danh sách, cấm, gỡ cấm.
-///
-/// Khi cấm một tài khoản, ta thực hiện 3 việc:
-///   1. Status = Banned  -> login bị chặn (ACCOUNT_BANNED).
-///   2. Thu hồi toàn bộ refresh token -> không thể dùng token cũ để lấy token mới.
-///   3. Ghi lại lý do + admin đã cấm + thời điểm cấm (để truy vết & hiển thị).
-/// </summary>
+    /// <summary>
+    /// Quản lý tài khoản người dùng phía nhân viên (Admin + Moderator):
+    /// xem danh sách, cấm, gỡ cấm.
+    ///
+    /// Khi cấm một tài khoản, ta thực hiện 3 việc:
+    ///   1. Status = Banned  -> login bị chặn (ACCOUNT_BANNED).
+    ///   2. Thu hồi toàn bộ refresh token -> không thể dùng token cũ để lấy token mới.
+    ///   3. Ghi lại lý do + ai đã cấm + thời điểm cấm (để truy vết & hiển thị).
+    ///
+    /// PHÂN TẦNG QUYỀN (nguồn sự thật: <see cref="StaffPermission"/>):
+    ///   - Admin và Moderator đều cấm / gỡ cấm được tài khoản THƯỜNG.
+    ///   - CHỈ Admin cấm / gỡ cấm được tài khoản Moderator.
+    ///   - KHÔNG ai cấm / gỡ cấm được tài khoản Admin.
+    /// </summary>
 public class AdminUserService : IAdminUserService
 {
     private readonly IUserRepository _userRepo;
@@ -88,11 +95,10 @@ public class AdminUserService : IAdminUserService
     {
         var target = await FindUserOrThrowAsync(targetUserId, ct);
 
-        // Admin không cấm được Admin (kể cả chính mình) — tránh khoá nhầm hệ thống.
-        if (target.Role == (int)UserRole.Admin)
-            throw new ValidationException(
-                "Không thể cấm tài khoản quản trị viên.",
-                "ADMIN_CANNOT_BE_BANNED");
+        // Người thực hiện (Admin hoặc Moderator) — cần biết họ là ai để
+        // áp dụng đúng tầng quyền.
+        var actor = await FindUserOrThrowAsync(adminUserId, ct);
+        EnsureCanBanTarget(actor, target);
 
         if (target.Status == (int)UserStatus.Banned)
             throw new ConflictException(
@@ -158,10 +164,8 @@ public class AdminUserService : IAdminUserService
     {
         var target = await FindUserOrThrowAsync(targetUserId, ct);
 
-        if (target.Role == (int)UserRole.Admin)
-            throw new ValidationException(
-                "Không thể gỡ cấm tài khoản quản trị viên.",
-                "ADMIN_CANNOT_BE_BANNED");
+        var actor = await FindUserOrThrowAsync(adminUserId, ct);
+        EnsureCanBanTarget(actor, target);
 
         if (target.Status != (int)UserStatus.Banned)
             throw new ValidationException(
@@ -198,6 +202,35 @@ public class AdminUserService : IAdminUserService
     {
         return await _userRepo.GetByIdAsync(userId, ct)
             ?? throw new NotFoundException("Không tìm thấy người dùng.", "USER_NOT_FOUND");
+    }
+
+    /// <summary>
+    /// Kiểm tra người thực hiện (actor) có quyền cấm / gỡ cấm tài khoản đích không.
+    ///
+    /// PHÂN TẦNG QUYỀN:
+    ///   - Admin      -> cấm được tài khoản thường VÀ tài khoản Moderator.
+    ///   - Moderator  -> CHỈ cấm được tài khoản thường.
+    ///   - Tài khoản Admin -> KHÔNG ai cấm được (kể cả Admin khác).
+    /// </summary>
+    private static void EnsureCanBanTarget(ApplicationUser actor, ApplicationUser target)
+    {
+        // Người thực hiện phải là nhân viên (Admin hoặc Moderator).
+        if (!StaffPermission.IsStaff(actor))
+            throw new ForbiddenException(
+                "Bạn không có quyền cấm tài khoản.",
+                "FORBIDDEN");
+
+        // Không ai cấm được tài khoản Admin — tránh khoá nhầm hệ thống.
+        if (target.Role == (int)UserRole.Admin)
+            throw new ValidationException(
+                "Không thể cấm tài khoản quản trị viên.",
+                "ADMIN_CANNOT_BE_BANNED");
+
+        // Chỉ Admin mới cấm được tài khoản Moderator.
+        if (target.Role == (int)UserRole.Moderator && !StaffPermission.IsAdmin(actor))
+            throw new ValidationException(
+                "Chỉ quản trị viên mới cấm được tài khoản kiểm duyệt viên.",
+                "MODERATOR_CANNOT_BE_BANNED");
     }
 
     /// <summary>
@@ -250,18 +283,17 @@ public class AdminUserService : IAdminUserService
         // ----- Role (quyền quản trị) -----
         Role = user.Role,
         RoleName = RoleNameOf(user.Role),
-        IsAdmin = user.Role == (int)UserRole.Admin
+        IsAdmin = user.Role == (int)UserRole.Admin,
+        IsModerator = user.Role == (int)UserRole.Moderator,
+        // Nhân viên = Admin hoặc Moderator (được chia sẻ công việc quản trị).
+        IsStaff = StaffPermission.IsStaff(user)
     };
 
     /// <summary>
     /// Tên vai trò dễ đọc cho frontend.
+    /// Nguồn sự thật duy nhất: <see cref="RoleNames"/> (Domain).
     /// </summary>
-    public static string RoleNameOf(int role) => role switch
-    {
-        (int)UserRole.Admin => "Admin",
-        (int)UserRole.AiService => "AiService",
-        _ => "User"
-    };
+    public static string RoleNameOf(int role) => RoleNames.Of(role);
 
     /// <summary>
     /// Tên trạng thái tài khoản dễ đọc cho frontend.

@@ -7,10 +7,11 @@ using StudentFleaMarket.Application.DTOs.Seller;
 namespace StudentFleaMarket.API.Controllers;
 
 /// <summary>
-/// Quản lý quyền BÁN HÀNG (Seller) — phía quản trị viên.
+/// Quản lý quyền BÁN HÀNG (Seller) — phía nhân viên (Admin + Moderator).
 ///
-/// Admin là bên cấp quyền đăng bán cho người dùng. Trước khi được duyệt,
-/// tài khoản đó vẫn mua / yêu thích bình thường nhưng không đăng tin được.
+/// Admin và Moderator đều là bên cấp quyền đăng bán cho người dùng. Trước khi
+/// được duyệt, tài khoản đó vẫn mua / yêu thích bình thường nhưng không đăng
+/// tin được. Moderator tồn tại để chia sẻ công việc này khi Admin bận.
 ///
 /// Endpoint:
 ///   GET  /api/Admin/seller-requests                     -> danh sách yêu cầu
@@ -20,7 +21,7 @@ namespace StudentFleaMarket.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/Admin/seller-requests")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin, Moderator")]
 [Produces("application/json")]
 public class AdminSellerController : ControllerBase
 {

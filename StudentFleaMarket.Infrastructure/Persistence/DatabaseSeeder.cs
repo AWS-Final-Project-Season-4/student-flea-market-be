@@ -6,7 +6,8 @@ using StudentFleaMarket.Domain.Enums;
 namespace StudentFleaMarket.Infrastructure.Persistence;
 
 /// <summary>
-/// Nạp dữ liệu khởi tạo (seed) vào database: tài khoản Admin mặc định + danh mục sản phẩm.
+/// Nạp dữ liệu khởi tạo (seed) vào database: tài khoản Admin + Moderator mặc định
+/// và danh mục sản phẩm.
 /// Chạy tự động khi khởi động API (idempotent — không ghi đè dữ liệu đã có).
 /// </summary>
 public static class DatabaseSeeder
@@ -20,12 +21,22 @@ public static class DatabaseSeeder
     private const string DefaultAdminPassword = "admin123";
     private const string DefaultAdminFullName = "Administrator";
 
+    /// <summary>
+    /// Tài khoản Moderator (kiểm duyệt viên) mặc định.
+    /// Cùng mật khẩu với Admin — nên được đổi sau lần đăng nhập đầu tiên.
+    /// </summary>
+    private const string DefaultModeratorUsername = "moderator";
+    private const string DefaultModeratorEmail = "moderator@gmail.com";
+    private const string DefaultModeratorPassword = "moderator123";
+    private const string DefaultModeratorFullName = "Moderator";
+
     public static async Task SeedAsync(IServiceProvider services)
     {
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         await SeedAdminAsync(db);
+        await SeedModeratorAsync(db);
         await SeedCategoriesAsync(db);
     }
 
@@ -55,6 +66,40 @@ public static class DatabaseSeeder
         };
 
         db.Users.Add(admin);
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Seed tài khoản kiểm duyệt viên — chia sẻ công việc quản trị với Admin.
+    /// Moderator có sẵn quyền đăng tin bán (không cần xin duyệt) nên
+    /// SellerStatus được set luôn là Approved.
+    /// </summary>
+    private static async Task SeedModeratorAsync(AppDbContext db)
+    {
+        var moderatorExists = await db.Users.AnyAsync(u => u.Username == DefaultModeratorUsername);
+
+        if (moderatorExists)
+            return;
+
+        var hasher = new Services.PasswordHasher();
+
+        var moderator = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            FullName = DefaultModeratorFullName,
+            Email = DefaultModeratorEmail,
+            Username = DefaultModeratorUsername,
+            PasswordHash = hasher.Hash(DefaultModeratorPassword),
+            Role = (int)UserRole.Moderator,
+            Status = (int)UserStatus.Active,
+            IsEmailVerified = true,
+            // Moderator được phép đăng tin nhờ vai trò (SellerPermission.CanSell)
+            // -> không cần SellerStatus = Approved.
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        db.Users.Add(moderator);
         await db.SaveChangesAsync();
     }
 

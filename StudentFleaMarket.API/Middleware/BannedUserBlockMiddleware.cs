@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using StudentFleaMarket.Application.Common;
 using StudentFleaMarket.Application.Common.Interfaces;
+using StudentFleaMarket.Domain.Common;
 using StudentFleaMarket.Domain.Enums;
 
 namespace StudentFleaMarket.API.Middleware;
@@ -68,7 +69,7 @@ public class BannedUserBlockMiddleware
             return null;
 
         // Bỏ qua tài khoản dịch vụ AI — xác thực bằng API key, không có trong bảng Users.
-        if (context.User.IsInRole("AiService"))
+        if (context.User.IsInRole(RoleNames.AiService))
             return null;
 
         var raw = context.User.FindFirstValue(ClaimTypes.NameIdentifier)

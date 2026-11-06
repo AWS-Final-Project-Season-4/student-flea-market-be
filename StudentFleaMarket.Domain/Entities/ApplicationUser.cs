@@ -43,7 +43,8 @@ public class ApplicationUser
     public string? Dormitory { get; set; }
 
     /// <summary>
-    /// UserRole: 0 = User, 1 = Admin, 2 = AiService
+    /// UserRole: 0 = User, 1 = Admin, 2 = AiService, 3 = Moderator.
+    /// Xem <see cref="Enums.UserRole"/> và <see cref="Common.RoleNames"/>.
     /// </summary>
     public int Role { get; set; } = (int)UserRole.User;
 
@@ -107,6 +108,26 @@ public class ApplicationUser
     /// </summary>
     public Guid? BannedByUserId { get; set; }
 
+    // -------------------------------------------------- ROLE (Admin cấp quyền kiểm duyệt)
+    // Theo dõi việc Admin nâng cấp / hạ cấp một tài khoản thường thành
+    // Moderator (kiểm duyệt viên) — để truy vết "ai cấp quyền, lúc nào".
+    // Không có cột này thì không trả lời được khiếu nại về quyền kiểm duyệt.
+
+    /// <summary>
+    /// Admin đã cấp role kiểm duyệt viên cho tài khoản này (nếu có).
+    /// </summary>
+    public Guid? RoleGrantedByUserId { get; set; }
+
+    /// <summary>
+    /// Thời điểm được cấp role kiểm duyệt viên.
+    /// </summary>
+    public DateTime? RoleGrantedAt { get; set; }
+
+    /// <summary>
+    /// Thời điểm bị thu hồi role kiểm duyệt viên (nếu đã bị thu hồi).
+    /// </summary>
+    public DateTime? RoleRevokedAt { get; set; }
+
     /// <summary>
     /// Thời điểm bị cấm.
     /// </summary>
@@ -136,4 +157,9 @@ public class ApplicationUser
     /// Admin đã cấm tài khoản này (nếu có).
     /// </summary>
     public ApplicationUser? BannedBy { get; set; }
+
+    /// <summary>
+    /// Admin đã cấp role kiểm duyệt viên cho tài khoản này (nếu có).
+    /// </summary>
+    public ApplicationUser? RoleGrantedBy { get; set; }
 }

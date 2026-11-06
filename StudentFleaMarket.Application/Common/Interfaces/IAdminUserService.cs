@@ -4,14 +4,17 @@ using StudentFleaMarket.Application.DTOs.Admin;
 namespace StudentFleaMarket.Application.Common.Interfaces;
 
 /// <summary>
-/// Quản lý tài khoản người dùng phía Admin.
+/// Quản lý tài khoản người dùng phía nhân viên (Admin + Moderator).
 ///
 /// Liên quan tới chức năng CẤM (ban):
 ///   - Cấm -> UserStatus.Banned: đăng nhập bị chặn, toàn bộ refresh token
 ///     bị thu hồi, tài khoản không dùng được API nào nữa.
 ///   - Gỡ cấm -> UserStatus.Active: tài khoản đăng nhập lại được bình thường.
 ///
-/// Admin KHÔNG thể cấm/gỡ cấm tài khoản Admin khác (chỉ quản lý User).
+/// PHÂN TẦNG QUYỀN (nguồn sự thật: StaffPermission):
+///   - Admin và Moderator đều cấm / gỡ cấm được tài khoản THƯỜNG.
+///   - CHỈ Admin cấm / gỡ cấm được tài khoản Moderator.
+///   - KHÔNG ai cấm / gỡ cấm được tài khoản Admin.
 /// </summary>
 public interface IAdminUserService
 {
@@ -31,7 +34,8 @@ public interface IAdminUserService
     Task<AdminUserDto> GetUserAsync(Guid userId, CancellationToken ct = default);
 
     /// <summary>
-    /// Admin cấm tài khoản. Tài khoản bị chặn đăng nhập ngay lập tức.
+    /// Cấm tài khoản. Tài khoản bị chặn đăng nhập ngay lập tức.
+    /// Moderator chỉ cấm được tài khoản thường.
     /// </summary>
     Task<AdminUserDto> BanUserAsync(
         Guid adminUserId,
@@ -40,7 +44,8 @@ public interface IAdminUserService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Admin gỡ cấm — tài khoản hoạt động trở lại.
+    /// Gỡ cấm — tài khoản hoạt động trở lại.
+    /// Moderator chỉ gỡ cấm được tài khoản thường.
     /// </summary>
     Task<AdminUserDto> UnbanUserAsync(Guid adminUserId, Guid targetUserId, CancellationToken ct = default);
 }

@@ -82,6 +82,15 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(0);
 
+                    b.Property<DateTime?>("RoleGrantedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RoleGrantedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RoleRevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("SchoolName")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
@@ -129,6 +138,8 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Email")
                         .IsUnique();
+
+                    b.HasIndex("RoleGrantedByUserId");
 
                     b.HasIndex("SellerApprovedByUserId");
 
@@ -786,12 +797,19 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasForeignKey("BannedByUserId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "RoleGrantedBy")
+                        .WithMany()
+                        .HasForeignKey("RoleGrantedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "SellerApprovedBy")
                         .WithMany()
                         .HasForeignKey("SellerApprovedByUserId")
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("BannedBy");
+
+                    b.Navigation("RoleGrantedBy");
 
                     b.Navigation("SellerApprovedBy");
                 });

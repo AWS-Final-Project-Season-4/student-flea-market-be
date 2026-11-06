@@ -25,7 +25,7 @@ namespace StudentFleaMarket.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/Transactions")]
-[Authorize(Roles = "User, Admin")]
+[Authorize(Roles = "User, Admin, Moderator")]
 [Produces("application/json")]
 public class TransactionsController : ControllerBase
 {

@@ -71,7 +71,8 @@ public class UserRepository : EfRepository<ApplicationUser>, IUserRepository
         int pageSize,
         CancellationToken ct = default)
     {
-        // Chỉ quan tâm tài khoản người dùng — Admin không cần xin quyền bán.
+        // Chỉ quan tâm tài khoản người dùng — Admin và Moderator đều không cần
+        // xin quyền bán (nhân viên luôn có sẵn quyền đăng tin).
         var q = DbSet.Where(u => u.Role == (int)Domain.Enums.UserRole.User);
 
         if (status.HasValue)
@@ -105,8 +106,8 @@ public class UserRepository : EfRepository<ApplicationUser>, IUserRepository
         int pageSize,
         CancellationToken ct = default)
     {
-        // Bao gồm cả tài khoản Admin — Admin cần nhìn thấy danh sách Admin
-        // để thu hồi quyền quản trị cho nhau.
+        // Bao gồm cả tài khoản Admin và Moderator — nhân viên cần nhìn thấy danh
+        // sách để quản lý lẫn nhau.
         // Loại trừ tài khoản dịch vụ AI (xác thực bằng API key, không phải user).
         var q = DbSet.Where(u => u.Role != (int)Domain.Enums.UserRole.AiService);
 
@@ -134,6 +135,35 @@ public class UserRepository : EfRepository<ApplicationUser>, IUserRepository
 
         var users = await q
             .OrderByDescending(u => u.CreatedAt)
+            .Skip((pageNo - 1) * size)
+            .Take(size)
+            .ToListAsync(ct);
+
+        return (users, total);
+    }
+
+    public async Task<(List<ApplicationUser> Users, int TotalCount)> ListModeratorsAsync(
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        // Chỉ các tài khoản đang là kiểm duyệt viên.
+        var q = DbSet.Where(u => u.Role == (int)Domain.Enums.UserRole.Moderator);
+
+        var total = await q.CountAsync(ct);
+
+        var pageNo = page < 1 ? 1 : page;
+        var size = pageSize switch
+        {
+            < 1 => 20,
+            > 100 => 100,
+            _ => pageSize
+        };
+
+        // Mới được cấp quyền lên đầu.
+        var users = await q
+            .OrderByDescending(u => u.RoleGrantedAt ?? DateTime.MinValue)
+            .ThenBy(u => u.CreatedAt)
             .Skip((pageNo - 1) * size)
             .Take(size)
             .ToListAsync(ct);

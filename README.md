@@ -209,18 +209,25 @@ Khi chạy ở môi trường **Development**, API tự động nạp dữ liệ
 | POST | `/api/Admin/users/{userId}/ban` | ✅ Admin | **Cấm tài khoản** (body: `{ "reason": "..." }`) |
 | POST | `/api/Admin/users/{userId}/unban` | ✅ Admin | **Gỡ cấm** — tài khoản hoạt động trở lại |
 
-> ℹ️ Dự án **không có** API cấp / gỡ quyền quản trị. Vai trò Admin được gán trực tiếp trong DB
+> ℹ️ Dự án **không có** API cấp / gỡ quyền **Admin**. Vai trò Admin được gán trực tiếp trong DB
 > (tài khoản `admin` mặc định được seed khi khởi tạo) → không có đường leo thang quyền qua API.
+>
+> ℹ️ Riêng vai trò **Moderator** thì **có** API cấp / thu hồi (`/api/Admin/moderators`) —
+> vì Moderator là cấp dưới Admin, hướng cấp quyền đi từ cao xuống thấp nên không tạo đường leo thang quyền.
 
 ### 1.4.1 Vai trò & cách đăng nhập
 
-Có **3 vai trò** (lưu trong cột `Users."Role"`):
+Có **4 vai trò** (lưu trong cột `Users."Role"`):
 
 | Role | Giá trị | Đăng nhập bằng | Ghi chú |
 |------|---------|----------------|---------|
 | **User** | `0` | Email (và username nếu đã đặt) | Đăng ký tự do qua `/api/Auth/register` |
 | **Admin** | `1` | Email (và username nếu đã đặt) | Seed sẵn: `admin` / `admin123` — email `admin@sv.edu.vn` |
 | **AiService** | `2` | **API key** (header `X-Api-Key`) | Dịch vụ AI: kiểm duyệt, gợi ý sản phẩm… Không đăng nhập bằng email/password |
+| **Moderator** | `3` | Email (và username nếu đã đặt) | Kiểm duyệt viên — chia sẻ công việc với Admin. Seed sẵn: `moderator` / `moderator123` |
+
+> 🔒 **Tên vai trò** dùng cho `[Authorize(Roles = "...")]` nằm ở **một nguồn duy nhất**: `RoleNames` (Domain/Common/RoleNames.cs).
+> Trước đây logic này bị nhân bản ở 4 nơi → dễ quên khi thêm role mới.
 
 **Username** là tùy chọn khi đăng ký:
 - Có `username` → đăng nhập được bằng **cả username lẫn email** (`admin` hoặc `admin@sv.edu.vn`).
@@ -230,6 +237,50 @@ Có **3 vai trò** (lưu trong cột `Users."Role"`):
 
 Tài khoản dịch vụ AI nằm ở bảng riêng `ServiceAccounts` — **không** có email/password, chỉ có API key (lưu dạng hash SHA-256).
 
+#### 🛡 Moderator — kiểm duyệt viên (chia sẻ công việc với Admin)
+
+`Moderator` (`Role = 3`) là **nhân viên trực**, tồn tại để chia sẻ công việc với Admin khi Admin bận.
+
+**Phân tầng quyền** (nguồn sự thật: `StaffPermission` — Application/Common/Helpers/StaffPermission.cs):
+
+| Hành động | Admin | Moderator |
+|-----------|:-----:|:--------:|
+| Duyệt / từ chối / thu hồi quyền bán | ✅ | ✅ |
+| Cấm / gỡ cấm tài khoản **thường** | ✅ | ✅ |
+| Gỡ tin đăng vi phạm (tin của người khác) | ✅ | ✅ |
+| Đăng tin bán (không cần xin duyệt) | ✅ | ✅ |
+| Cấm / gỡ cấm tài khoản **Moderator** | ✅ | ❌ |
+| Cấm / gỡ cấm tài khoản **Admin** | ❌ | ❌ |
+| Cấp / thu hồi role kiểm duyệt viên | ✅ | ❌ |
+| Quản lý tài khoản dịch vụ AI | ✅ | ❌ |
+
+**Quy tắc bất di bất dịch:**
+- **Không ai** cấm được tài khoản Admin → `400 ADMIN_CANNOT_BE_BANNED`.
+- **Chỉ Admin** cấm được tài khoản Moderator → `400 MODERATOR_CANNOT_BE_BANNED`.
+- **Moderator không cấp/thu hồi role được** → `403 FORBIDDEN` (chống leo thang quyền).
+- **Hướng cấp quyền luôn đi từ cao xuống thấp**: Admin → Moderator → User.
+
+**API quản lý kiểm duyệt viên** (chỉ Admin):
+
+| Method | Endpoint | Mô tả |
+|--------|----------|-------|
+| `GET` | `/api/Admin/moderators?page=1&pageSize=20` | Danh sách kiểm duyệt viên |
+| `POST` | `/api/Admin/moderators/{userId}` | Cấp role kiểm duyệt viên (body tuỳ chọn: `{ "note": "..." }`) |
+| `DELETE` | `/api/Admin/moderators/{userId}` | Thu hồi role kiểm duyệt viên (về lại User thường) |
+
+> ✅ **Hiệu lực tức thì** — `RoleSyncMiddleware` tra `Role` từ DB mỗi request → tài khoản vừa được cấp quyền **không cần đăng nhập lại**.
+> Mọi thao tác cấp / thu hồi đều ghi vết (`RoleGrantedByUserId`, `RoleGrantedAt`, `RoleRevokedAt`).
+
+**Mã lỗi riêng của Moderator:**
+
+| Mã | HTTP | Ý nghĩa |
+|----|------|---------|
+| `MODERATOR_CANNOT_BE_BANNED` | 400 | Moderator cố cấm tài khoản Moderator khác |
+| `ADMIN_CANNOT_BE_BANNED` | 400 | Cố cấm tài khoản Admin |
+| `MODERATOR_ALREADY_ASSIGNED` | 409 | Tài khoản đã là kiểm duyệt viên |
+| `MODERATOR_ALREADY_CAN_SELL` | 400 | Không cần cấp quyền bán cho Moderator |
+| `USER_IS_NOT_MODERATOR` | 400 | Thu hồi role cho tài khoản không phải Moderator |
+
 #### 🛒 Seller — "người bán" là NĂNG LỰC, không phải vai trò riêng
 
 `Role` chỉ có 3 giá trị ở trên. Việc "được phép đăng bán" được quản lý **riêng** bằng cột `Users."SellerStatus"`:
@@ -238,18 +289,18 @@ Tài khoản dịch vụ AI nằm ở bảng riêng `ServiceAccounts` — **khô
 |--------------|----------|---------|-------------------|
 | **None** | `0` | Chưa đăng ký bán (mặc định khi đăng ký tài khoản) | ❌ `403 SELLER_NOT_APPROVED` |
 | **Pending** | `1` | Đã gửi yêu cầu, đang chờ Admin duyệt | ❌ `403 SELLER_REQUEST_PENDING` |
-| **Approved** | `2` | Được Admin cấp quyền | ✅ |
-| **Rejected** | `3` | Bị Admin từ chối (kèm lý do) | ❌ `403 SELLER_REQUEST_REJECTED` |
+| **Approved** | `2` | Được Admin / Moderator cấp quyền | ✅ |
+| **Rejected** | `3` | Bị Admin / Moderator từ chối (kèm lý do) | ❌ `403 SELLER_REQUEST_REJECTED` |
 
 **Tại sao tách khỏi `Role`?**
 - Người bán **vẫn là `User`** → vẫn mua, yêu thích, xem hồ sơ, bình thường. Chỉ chức năng **đăng tin bán** bị khoá.
 - Không phải sửa lại JWT hay `[Authorize(Roles = ...)]` trên toàn bộ controller.
 - `UserStatus` (Active/Inactive/Banned) là **trạng thái tài khoản** — tách riêng, không trộn với `SellerStatus`.
 
-**Ai cần duyệt?** Chỉ **Admin** mới cấp được quyền bán. Admin không cần xin — đã có sẵn toàn bộ quyền.
+**Ai cần duyệt?** Cả **Admin** và **Moderator** đều duyệt được. Cả hai đều không cần xin — đã có sẵn toàn bộ quyền đăng tin.
 
 **Luật "được phép đăng bán" — nguồn sự thật duy nhất:** `SellerPermission` (Application/Common/Helpers/SellerPermission.cs).
-- `CanSell(user)` → `true` khi user là **Admin** hoặc `SellerStatus = Approved`.
+- `CanSell(user)` → `true` khi user là **Admin**, **Moderator** hoặc `SellerStatus = Approved`.
 - `EnsureCanSell(user)` → ném **403** với mã lỗi phù hợp từng trạng thái nếu không được phép.
 - Áp dụng cho **cả** `POST /api/Items/sell` (tạo tin) **và** `PUT /api/Items/sell/{id}` (sửa tin) — seller bị mất quyền bán không sửa được tin cũ.
 
@@ -559,8 +610,10 @@ POST /api/Admin/users/8e653a10-1bf9-4b88-8e9f-49c492915a0c/unban
 Authorization: Bearer <adminAccessToken>
 ```
 
-> ℹ️ Dự án không có endpoint cấp / gỡ quyền quản trị. Muốn thêm Admin mới thì gán role trực tiếp trong DB:
+> ℹ️ Dự án không có endpoint cấp / gỡ quyền **Admin**. Muốn thêm Admin mới thì gán role trực tiếp trong DB:
 > `UPDATE "Users" SET "Role" = 1 WHERE "Email" = 'email-cua-ban@example.com'`
+>
+> ℹ️ Muốn thêm **kiểm duyệt viên** thì dùng API: `POST /api/Admin/moderators/{userId}` (xem mục 1.4.2).
 
 ### 1.6 Quy ước response lỗi
 
@@ -817,10 +870,10 @@ Mỗi tin đăng có **hai định danh**, nằm cùng trên bảng `Items`:
 - **Tài khoản dịch vụ AI** nằm ở bảng riêng `ServiceAccounts`, không có email/password; xác thực bằng header `X-Api-Key`; key có thể thu hồi và tự hết hạn.
 - **Quyền bán hàng (Seller) do Admin cấp**, không tự cấp khi đăng ký:
   - User mới đăng ký → `SellerStatus = None` → `POST /api/Items/sell` bị **403 `SELLER_NOT_APPROVED`**.
-  - Chỉ endpoint `POST /api/Admin/seller-requests/{userId}/approve` (yêu cầu role `Admin`) mới mở khoá được.
+  - Chỉ endpoint `POST /api/Admin/seller-requests/{userId}/approve` (yêu cầu role `Admin` hoặc `Moderator`) mới mở khoá được.
   - `SellerStatus` được kiểm tra **trực tiếp từ DB** (không nhúng vào JWT) → có hiệu lực **tức thì**, không cần đăng nhập lại sau khi được duyệt.
   - Người bán vẫn là `Role = User` → mọi quyền mua / yêu thích / xem hồ sơ vẫn hoạt động bình thường.
-  - Admin **không cần** xin quyền bán (đã có sẵn toàn bộ quyền).
+  - Admin **không cần** xin quyền bán (đã có sẵn toàn bộ quyền) — **Moderator cũng không cần** (được quyền bán nhờ vai trò).
   - **Luật nằm trong `SellerPermission`** (nguồn sự thật duy nhất) → áp dụng cho **cả tạo tin lẫn sửa tin**:
     - `POST /api/Items/sell` → seller chưa được duyệt bị **403**.
     - `PUT /api/Items/sell/{id}` → seller đã mất quyền bán **không sửa được** tin cũ.
@@ -839,7 +892,7 @@ Mỗi tin đăng có **hai định danh**, nằm cùng trên bảng `Items`:
   - Vai trò được gán **trực tiếp trong DB** (tài khoản `admin` mặc định được seed khi khởi tạo).
   - **Không có đường leo thang quyền**: không endpoint nào cho phép Admin tự cấp quyền admin cho người khác, hay tự thu hồi quyền admin của người khác.
   - `RoleSyncMiddleware` vẫn giữ nguyên (tra `Role` từ DB mỗi request) → đổi role trực tiếp trong DB thì hiệu lực **tức thì**, không cần đăng nhập lại.
-- **Hồ sơ là tài nguyên riêng tư (private):** `/api/Profile` yêu cầu đăng nhập (`[Authorize(Roles = "User, Admin")]`).
+- **Hồ sơ là tài nguyên riêng tư (private):** `/api/Profile` yêu cầu đăng nhập (`[Authorize(Roles = "User, Admin, Moderator")]`).
   - `userId` **luôn lấy từ access token**, không nhận từ client → không thể xem/sửa hồ sơ người khác.
   - Tài khoản dịch vụ AI (`AiService`, xác thực bằng API key) bị từ chối với **403 `FORBIDDEN`**.
   - Gửi API key kèm request đã đăng nhập → JWT được ưu tiên, API key bị bỏ qua.

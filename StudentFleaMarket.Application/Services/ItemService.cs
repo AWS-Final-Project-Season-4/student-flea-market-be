@@ -180,12 +180,12 @@ public class ItemService : IItemService
     }
 
     // ------------------------------------------------------------ DELETE
-    public async Task<ApiResponse<object>> DeleteAsync(Guid userId, bool isAdmin, Guid itemId, CancellationToken ct = default)
+    public async Task<ApiResponse<object>> DeleteAsync(Guid userId, bool isStaff, Guid itemId, CancellationToken ct = default)
     {
         var item = await _itemRepo.GetByIdAsync(itemId, ct)
             ?? throw new NotFoundException("Không tìm thấy tin đăng.", "ITEM_NOT_FOUND");
 
-        if (!isAdmin && item.SellerId != userId)
+        if (!isStaff && item.SellerId != userId)
             throw new ForbiddenException("Bạn không có quyền xóa tin đăng này.", "NOT_ITEM_OWNER");
 
         // Soft delete — query filter của DbContext sẽ ẩn tin này khỏi mọi truy vấn.
