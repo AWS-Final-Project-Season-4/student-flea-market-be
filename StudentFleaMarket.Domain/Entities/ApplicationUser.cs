@@ -148,6 +148,22 @@ public class ApplicationUser
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
     public ICollection<VerificationCode> VerificationCodes { get; set; } = new List<VerificationCode>();
 
+    // -------------------------------------------- TRUST & MODERATION
+    // Đánh giá mà tài khoản này viết (người mua đánh giá người bán).
+    public ICollection<Review> ReviewsWritten { get; set; } = new List<Review>();
+
+    // Đánh giá mà tài khoản này nhận được (tính vào điểm uy tín).
+    public ICollection<Review> ReviewsReceived { get; set; } = new List<Review>();
+
+    // Report do tài khoản này gửi lên.
+    public ICollection<Report> ReportsSubmitted { get; set; } = new List<Report>();
+
+    // Report nhắm vào tài khoản này.
+    public ICollection<Report> ReportsAgainst { get; set; } = new List<Report>();
+
+    // Xác nhận bàn giao (đơn đổi đồ).
+    public ICollection<TransactionConfirmation> TransactionConfirmations { get; set; } = new List<TransactionConfirmation>();
+
     /// <summary>
     /// Admin đã cấp quyền bán cho tài khoản này (nếu có).
     /// </summary>

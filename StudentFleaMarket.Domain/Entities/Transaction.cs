@@ -69,5 +69,19 @@ public class Transaction
     public Item Item { get; set; } = null!;
     public ExchangeRequest? ExchangeRequest { get; set; }
     public Payment? Payment { get; set; }
-    public Review? Review { get; set; }
+
+    /// <summary>
+    /// Các đánh giá của đơn này.
+    ///
+    /// Quan hệ 1-N (không còn 1-1): đơn Exchange có 2 bên cùng đánh giá được,
+    /// còn đơn Purchase/Free chỉ có 1 đánh giá (người mua đánh giá người bán).
+    /// Ràng buộc "mỗi người 1 đánh giá / đơn" do unique index
+    /// (TransactionId, ReviewerId) đảm bảo.
+    /// </summary>
+    public ICollection<Review> Reviews { get; set; } = new List<Review>();
+
+    /// <summary>
+    /// Xác nhận bàn giao của các bên (chỉ dùng cho đơn Exchange).
+    /// </summary>
+    public ICollection<TransactionConfirmation> Confirmations { get; set; } = new List<TransactionConfirmation>();
 }
