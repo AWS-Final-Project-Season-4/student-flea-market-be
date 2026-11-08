@@ -62,6 +62,20 @@ public static class StaffPermission
     public static bool CanRemoveAnyItem(ApplicationUser user) => IsStaff(user);
 
     /// <summary>
+    /// Tài khoản này có quyền XỬ LÝ BÁO CÁO VI PHẠM không?
+    /// (Admin và Moderator đều được)
+    /// </summary>
+    public static bool CanHandleReports(ApplicationUser user) => IsStaff(user);
+
+    /// <summary>
+    /// Tài khoản này có quyền QUẢN LÝ DANH MỤC SẢN PHẨM không?
+    /// (Admin và Moderator đều được)
+    ///
+    /// Phạm vi: bật/tắt danh mục, thêm / sửa / xoá danh mục, sắp xếp lại thứ tự.
+    /// </summary>
+    public static bool CanManageCategories(ApplicationUser user) => IsStaff(user);
+
+    /// <summary>
     /// Tài khoản này có quyền QUẢN LÝ tài khoản dịch vụ AI không? (chỉ Admin)
     /// </summary>
     public static bool CanManageServiceAccounts(ApplicationUser user) => IsAdmin(user);
