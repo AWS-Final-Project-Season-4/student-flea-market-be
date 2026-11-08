@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using StudentFleaMarket.API.Filters;
+using StudentFleaMarket.API.Hubs;
 using StudentFleaMarket.API.Middleware;
 using StudentFleaMarket.Application.Common;
 using StudentFleaMarket.Application.Common.Interfaces;
@@ -76,6 +77,24 @@ builder.Services
         // Áp dụng cho mọi endpoint [Authorize] (kể cả Profile).
         options.Events = new JwtBearerEvents
         {
+            OnMessageReceived = async context =>
+            {
+                // ----- WebSocket của SignalR -----
+                // Browser KHÔNG set được header "Authorization" khi mở
+                // WebSocket (JS SignalR client cũng không cho gán header tùy ý).
+                // Chuẩn của SignalR là truyền token qua query string:
+                //     /hubs/chat?access_token=<jwt>
+                // Đọc ở đây để pipeline xác thực JWT hoạt động cho cả WebSocket
+                // lẫn Long Polling.
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(accessToken)
+                    && string.IsNullOrEmpty(context.Token))
+                {
+                    context.Token = accessToken;
+                }
+
+                await Task.CompletedTask;
+            },
             OnAuthenticationFailed = context =>
             {
                 // Ghi log lý do từ chối token để dễ chẩn đoán (401 do dán sai token).
@@ -149,6 +168,15 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+// ------------------------------------------------------------------ SignalR
+// Realtime cho chức năng trò chuyện (chat 1-1 theo món đồ).
+// SignalR nằm sẵn trong shared framework của .NET 8 -> không cần thêm package.
+builder.Services.AddSignalR(options =>
+{
+    // Cho phép client gửi message lớn hơn mặc định (mặc định 32KB).
+    options.MaximumReceiveMessageSize = 64 * 1024;
+});
+
 // -------------------------------------------------------------- MVC + Swagger
 builder.Services.AddScoped<ValidationFilter>();
 builder.Services.AddControllers(options => options.Filters.AddService<ValidationFilter>());
@@ -174,6 +202,7 @@ builder.Services.AddSwaggerGen(options =>
             "AdminModeratorsController" => "7. Quản trị - Kiểm duyệt viên (Moderator)",
             "ExchangeRequestsController" => "8. Yêu cầu đổi đồ",
             "TransactionsController" => "9. Giao dịch & Thanh toán",
+            "ChatController" => "10. Trò chuyện (Chat)",
             _ => controllerName ?? "Khác"
         };
 
@@ -256,6 +285,13 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+
+// --------------------------------------------------- SignalR — Chat realtime
+// Endpoint: /hubs/chat?access_token=<jwt>
+// (Browser không gửi được header Authorization khi mở WebSocket, nên token
+//  được truyền qua query string — JwtBearerEvents.OnMessageReceived đọc
+//  query này để xác thực.)
+app.MapHub<ChatHub>("/hubs/chat");
 
 // -------------------------------------------------- Seed dữ liệu khởi tạo
 // (tài khoản Admin mặc định + danh mục). Idempotent — chạy lại không ghi đè.

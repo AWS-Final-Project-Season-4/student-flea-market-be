@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IModeratorService, ModeratorService>();
         services.AddScoped<IExchangeRequestService, ExchangeRequestService>();
         services.AddScoped<ITransactionService, TransactionService>();
+        services.AddScoped<IChatService, ChatService>();
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IServiceAccountRepository, ServiceAccountRepository>();
@@ -33,6 +34,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IExchangeRequestRepository, ExchangeRequestRepository>();
         services.AddScoped<ITransactionRepository, TransactionRepository>();
         services.AddScoped<IPaymentRepository, PaymentRepository>();
+        services.AddScoped<IChatRepository, ChatRepository>();
+        services.AddScoped<IMessageRepository, MessageRepository>();
         services.AddScoped<IRepository<ApplicationUser>, EfRepository<ApplicationUser>>();
         services.AddScoped<IRepository<RefreshToken>, EfRepository<RefreshToken>>();
         services.AddScoped<IRepository<VerificationCode>, EfRepository<VerificationCode>>();
