@@ -1130,3 +1130,152 @@ curl -X POST http://localhost:5033/api/Transactions/purchase \
 | Mua trùng một tin | `409 ITEM_ALREADY_HAS_TRANSACTION` |
 
 > 💡 Với đơn **đổi đồ**, khi hoàn thành thì **cả hai** món đồ đều chuyển sang `status = 4` (Đã bán) và món đồ được nhận **đổi chủ** sang người gửi yêu cầu — đúng nghĩa "đã trao đổi xong".
+
+---
+
+## 💬 Feature 4 — Trò chuyện Trực tiếp (Real-time Chat)
+
+Chat thương lượng **1-1** giữa người mua và người bán, xoay quanh **1 món đồ cụ thể**.
+Có lịch sử hội thoại, đánh dấu đã đọc (read receipt) và badge số tin chưa đọc — realtime qua **SignalR**.
+
+### 4.1 Cấu trúc mã nguồn
+
+| Layer | Thành phần mới |
+|-------|----------------|
+| **Domain** | `Conversation` (bổ sung `BuyerUnreadCount`, `SellerUnreadCount`), `Message` (bổ sung `ReadAt`) |
+| **Application** | `IChatService` / `ChatService`, `IChatRepository` / `IMessageRepository`, `ChatDtos` (kèm FluentValidation) |
+| **Infrastructure** | `ChatRepository`, `MessageRepository`, cấu hình index trong `AppDbContext`, DI extension |
+| **API** | `ChatController` (Swagger tag **10**), `ChatHub` (SignalR), `AddSignalR()` + `MapHub`, `JwtBearerEvents.OnMessageReceived` |
+
+### 4.2 Migration
+
+`AddChatFeature` — bổ sung:
+
+| Bảng | Thay đổi |
+|------|----------|
+| `Conversations` | `+ BuyerUnreadCount` (int, default 0), `+ SellerUnreadCount` (int, default 0) |
+| `Conversations` | `+ unique index (ItemId, BuyerId)` — **1 món đồ + 1 người mua = đúng 1 hội thoại** |
+| `Conversations` | `+ index (BuyerId, LastMessageAt)`, `+ index (SellerId, LastMessageAt)` — sort danh sách hội thoại |
+| `Messages` | `+ ReadAt` (timestamp, nullable) — hiển thị "đã xem lúc HH:mm" |
+| `Messages` | `+ index (ConversationId, SentAt)` — phân trang lịch sử chat |
+
+> ⚠️ **Index unique `(ItemId, BuyerId)` là bắt buộc** — thiếu nó thì bấm "Chat" nhiều lần sẽ tạo nhiều hội thoại (lịch sử vỡ + badge đếm sai).
+
+### 4.3 Danh sách API
+
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|-------|
+| POST | `/api/Chat/conversations` | ✅ | Mở / tạo hội thoại từ `itemId`. Body: `{ "itemId": "<guid>" }` |
+| GET | `/api/Chat/conversations` | ✅ | Danh sách hội thoại + `totalUnread` (badge toàn app) |
+| GET | `/api/Chat/conversations/{id}` | ✅ | Chi tiết hội thoại |
+| GET | `/api/Chat/conversations/{id}/messages` | ✅ | Lịch sử tin nhắn (phân trang, mới nhất trước) |
+| POST | `/api/Chat/conversations/{id}/messages` | ✅ | Gửi tin nhắn — **đường dự phòng** khi WebSocket lỗi |
+| POST | `/api/Chat/conversations/{id}/read` | ✅ | Đánh dấu đã đọc → reset badge |
+| GET | `/api/Chat/unread-count` | ✅ | Tổng số tin chưa đọc |
+
+### 4.4 Realtime (SignalR) — `/hubs/chat`
+
+**Xác thực:** browser **không** set được header `Authorization` khi mở WebSocket → token truyền qua **query string**:
+
+```
+ws://localhost:5033/hubs/chat?access_token=<jwt>
+```
+
+`JwtBearerEvents.OnMessageReceived` trong `Program.cs` đọc query `access_token` để xác thực.
+
+**Client → Server**
+
+| Method | Ý nghĩa |
+|--------|---------|
+| `JoinConversation(conversationId)` | Vào nhóm nhận tin của hội thoại (tự kiểm tra quyền tham gia) |
+| `LeaveConversation(conversationId)` | Rời nhóm (khi đóng màn hình chat) |
+| `SendMessage(conversationId, content)` | Gửi tin → lưu DB → đẩy realtime |
+| `MarkAsRead(conversationId)` | Đánh dấu đã đọc → reset badge → bên kia thấy "đã đọc" |
+| `Typing(conversationId)` | Báo "đang gõ" (không lưu DB) |
+
+**Server → Client**
+
+| Event | Payload | Khi nào bắn |
+|-------|---------|------------|
+| `ReceiveMessage` | `MessageDto` | Có tin nhắn mới |
+| `MessageRead` | `{ conversationId, byUserId, readAt }` | Đối tác đọc tin |
+| `ConversationUpdated` | `{ id, lastMessage, lastMessageAt }` | Preview hội thoại thay đổi |
+| `NotifyUnreadCount` | `{ totalUnread }` | Badge toàn app |
+| `UserTyping` | `{ conversationId, userId }` | Bên kia đang gõ |
+| `JoinedConversation` | Thông tin hội thoại | Vừa join nhóm |
+| `ChatError` | `{ conversationId, code, message }` | Lỗi nghiệp vụ (hiển thị rõ cho client) |
+
+**Nhóm (groups)**
+
+| Group | Ai ở trong | Dùng để |
+|-------|-----------|---------|
+| `conversation:{id}` | 2 bên của hội thoại | đẩy tin nhắn + trạng thái đã đọc |
+| `user:{userId}` | 1 người (mọi thiết bị) | đẩy tổng badge unread |
+
+### 4.5 Quy tắc nghiệp vụ & mã lỗi
+
+| Quy tắc | Mã lỗi | HTTP |
+|---------|---------|------|
+| Không chat với chính mình | `CANNOT_CHAT_WITH_SELF` | 400 |
+| Món đồ không còn "đang bán" → **không tạo được** hội thoại mới | `ITEM_NOT_AVAILABLE` | 400 |
+| Không phải 2 bên của hội thoại | `NOT_CONVERSATION_PARTICIPANT` | 403 |
+| Nội dung tin nhắn rỗng | `MESSAGE_CONTENT_EMPTY` | 400 |
+| Nội dung tin nhắn > 1000 ký tự | `MESSAGE_CONTENT_TOO_LONG` | 400 |
+| Tài khoản bị Admin cấm | `ACCOUNT_BANNED` | 403 |
+
+#### Điểm quan trọng về vòng đời hội thoại
+
+| Tình huống | Kết quả |
+|-----------|--------|
+| Bấm "Chat" nhiều lần với cùng 1 món đồ | Luôn trả về **cùng 1 hội thoại** (unique index) |
+| Món đồ bị gỡ / bán **sau khi** đã chat | Vẫn mở được, **vẫn nhắn tin được**; response có `isItemUnavailable = true` để UI hiện cảnh báo |
+| Món đồ bị gỡ / bán mà **chưa từng chat** | Không tạo được hội thoại mới → `400 ITEM_NOT_AVAILABLE` |
+| Lịch sử chat sau khi giao dịch xong | **Được giữ lại** (FK `Item` dùng `DeleteBehavior.Restrict`) |
+| Số tin chưa đọc | Đếm theo **hướng nhận**: `BuyerUnreadCount` = tin của Seller mà Buyer chưa đọc |
+
+> 💡 **Chat không tạo ra giao dịch.** Chat là kênh thương lượng (giá, hẹn giao); việc chốt đơn vẫn đi qua `ExchangeRequest` → `Transaction` sẵn có.
+
+### 4.6 Test nhanh với dữ liệu demo
+
+```bash
+# 1. Đăng nhập 2 demo user (người mua + người bán)
+curl -X POST http://localhost:5033/api/Auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"identifier":"minh","password":"123456"}'
+
+# 2. Mở hội thoại chat về 1 món đồ (ItemId lấy từ GET /api/Items/search)
+curl -X POST http://localhost:5033/api/Chat/conversations \
+  -H "Authorization: Bearer <minhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"itemId":"<itemId>"}'
+
+# 3. Gửi tin nhắn
+curl -X POST http://localhost:5033/api/Chat/conversations/<conversationId>/messages \
+  -H "Authorization: Bearer <minhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"Chào bạn, món đồ còn không?"}'
+
+# 4. Xem danh sách hội thoại + badge số tin chưa đọc (đứng ở phía người bán)
+curl http://localhost:5033/api/Chat/conversations \
+  -H "Authorization: Bearer <linhAccessToken>"
+
+# 5. Đánh dấu đã đọc
+curl -X POST http://localhost:5033/api/Chat/conversations/<conversationId>/read \
+  -H "Authorization: Bearer <linhAccessToken>"
+```
+
+**Kết quả mong đợi:**
+
+| Bước | Kết quả |
+|------|---------|
+| Bước 2 | `200` + `conversationId`, `otherParty` = người bán, `viewerIsBuyer = true` |
+| Bước 2 (lại) | Cùng `conversationId` — không tạo trùng |
+| Bước 3 | `200` + `MessageDto` (`isRead = false`) |
+| Bước 4 | `totalUnread = 1` ở phía người bán; `unreadCount = 1` ở hội thoại đó |
+| Bước 5 | `markedCount = 1`, `totalUnread = 0`, các tin chuyển `isRead = true` + có `readAt` |
+| Người thứ 3 gọi vào hội thoại | `403 NOT_CONVERSATION_PARTICIPANT` |
+
+> 🔒 **Lưu ý bảo mật:** các middleware HTTP (`BannedUserBlockMiddleware`, `RoleSyncMiddleware`) **không** áp dụng cho WebSocket của SignalR — vì vậy `ChatHub.OnConnectedAsync` tự kiểm tra tài khoản bị cấm, và `ChatService` tự kiểm tra lại mỗi lần gửi tin.
+
+> 💡 Muốn đếm tin chưa đọc theo **tổng** (badge toàn app) dùng `GET /api/Chat/unread-count` hoặc lắng nghe event `NotifyUnreadCount` qua SignalR.
+
