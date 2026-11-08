@@ -84,6 +84,48 @@ public interface ITransactionRepository : IRepository<Transaction>
     /// Tìm đơn giao dịch đã tạo từ một yêu cầu đổi đồ (để tránh tạo trùng).
     /// </summary>
     Task<Transaction?> GetByExchangeRequestAsync(Guid exchangeRequestId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Đếm số giao dịch ĐÃ HOÀN THÀNH của một tài khoản, tách 2 vai trò:
+    ///   - SalesCount     : user là bên BÁN (Counterparty).
+    ///   - PurchaseCount  : user là bên MUA (Initiator).
+    ///
+    /// Đây là TIÊU CHÍ CHÍNH để xếp mức uy tín — xem <c>TrustPolicy</c>.
+    ///
+    /// Chỉ tính đơn có trạng thái Completed (đơn Pending / Cancelled không tính).
+    /// </summary>
+    Task<(int SalesCount, int PurchaseCount)> CountCompletedForUserAsync(
+        Guid userId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lấy các đơn đã HOÀN THÀNH mà người dùng này là 1 trong 2 bên,
+    /// kèm đánh giá đã viết (nếu có) — dùng cho màn hình "Cần đánh giá".
+    /// </summary>
+    Task<List<Transaction>> ListCompletedWithReviewsAsync(
+        Guid userId,
+        CancellationToken ct = default);
+}
+
+/// <summary>
+/// Repository riêng cho TransactionConfirmation (xác nhận bàn giao đơn đổi đồ).
+/// </summary>
+public interface ITransactionConfirmationRepository : IRepository<TransactionConfirmation>
+{
+    /// <summary>
+    /// Lấy các xác nhận của một đơn giao dịch (kèm User đã load).
+    /// </summary>
+    Task<List<TransactionConfirmation>> GetByTransactionAsync(
+        Guid transactionId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lấy xác nhận của một người cho một đơn (null nếu chưa xác nhận).
+    /// </summary>
+    Task<TransactionConfirmation?> GetByTransactionAndUserAsync(
+        Guid transactionId,
+        Guid userId,
+        CancellationToken ct = default);
 }
 
 /// <summary>

@@ -201,6 +201,39 @@ public class TransactionRepository : EfRepository<Transaction>, ITransactionRepo
 
     public Task<Transaction?> GetByExchangeRequestAsync(Guid exchangeRequestId, CancellationToken ct = default)
         => DbSet.FirstOrDefaultAsync(t => t.ExchangeRequestId == exchangeRequestId, ct);
+
+    public async Task<(int SalesCount, int PurchaseCount)> CountCompletedForUserAsync(
+        Guid userId,
+        CancellationToken ct = default)
+    {
+        // Chỉ tính đơn Completed — đơn Pending / Cancelled / AwaitingConfirmation
+        // chưa phải giao dịch thành công.
+        //
+        // Bên BÁN là Counterparty (chủ tin đăng), bên MUA là Initiator
+        // (người mở đơn). Với đơn Exchange, Initiator vừa là người gửi yêu cầu
+        // đổi đồ vừa là người mua món của bên kia — vẫn đúng vai trò mua.
+        var completed = DbSet.AsNoTracking()
+            .Where(t => t.Status == (int)TransactionStatus.Completed);
+
+        var salesCount = await completed.CountAsync(t => t.CounterpartyId == userId, ct);
+        var purchaseCount = await completed.CountAsync(t => t.InitiatorId == userId, ct);
+
+        return (salesCount, purchaseCount);
+    }
+
+    public Task<List<Transaction>> ListCompletedWithReviewsAsync(
+        Guid userId,
+        CancellationToken ct = default)
+        => DbSet.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Include(t => t.Item).ThenInclude(i => i!.Images)
+            .Include(t => t.Initiator)
+            .Include(t => t.Counterparty)
+            .Include(t => t.Reviews)
+            .Where(t => t.Status == (int)TransactionStatus.Completed
+                     && (t.InitiatorId == userId || t.CounterpartyId == userId))
+            .OrderByDescending(t => t.CompletedAt)
+            .ToListAsync(ct);
 }
 
 public class PaymentRepository : EfRepository<Payment>, IPaymentRepository
@@ -212,4 +245,30 @@ public class PaymentRepository : EfRepository<Payment>, IPaymentRepository
             .AsNoTracking()
             .Include(p => p.Payer)
             .FirstOrDefaultAsync(p => p.TransactionId == transactionId, ct);
+}
+
+/// <summary>
+/// Repository cho TransactionConfirmation — xác nhận bàn giao đơn đổi đồ.
+/// </summary>
+public class TransactionConfirmationRepository
+    : EfRepository<TransactionConfirmation>, ITransactionConfirmationRepository
+{
+    public TransactionConfirmationRepository(AppDbContext dbContext) : base(dbContext) { }
+
+    public Task<List<TransactionConfirmation>> GetByTransactionAsync(
+        Guid transactionId,
+        CancellationToken ct = default)
+        => DbSet
+            .AsNoTracking()
+            .Include(c => c.User)
+            .Where(c => c.TransactionId == transactionId)
+            .ToListAsync(ct);
+
+    public Task<TransactionConfirmation?> GetByTransactionAndUserAsync(
+        Guid transactionId,
+        Guid userId,
+        CancellationToken ct = default)
+        => DbSet
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.TransactionId == transactionId && c.UserId == userId, ct);
 }

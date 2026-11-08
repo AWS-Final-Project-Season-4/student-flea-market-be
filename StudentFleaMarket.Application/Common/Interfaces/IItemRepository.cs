@@ -80,6 +80,30 @@ public interface IItemRepository : IRepository<Item>
     /// Trả về số tin đăng đã gỡ.
     /// </summary>
     Task<int> RemoveAllBySellerAsync(Guid sellerId, CancellationToken ct = default);
+
+    /// <summary>
+    /// ẨN tin đăng do vi phạm (IsHidden = true) — KHÁC với soft delete.
+    ///
+    /// Tin bị ẩn vẫn còn trong DB và chủ tin vẫn thấy được (kèm lý do bị ẩn),
+    /// nhưng bị loại khỏi mọi màn hình công khai của sàn.
+    ///
+    /// Trả về true nếu thực sự ẩn (trước đó chưa ẩn).
+    /// </summary>
+    Task<bool> HideAsync(
+        Guid itemId,
+        Guid staffUserId,
+        string reason,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Bỏ ẩn tin đăng (sau khi xử lý nhầm).
+    /// </summary>
+    Task<bool> UnhideAsync(Guid itemId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Đếm số tin đăng đang bị ẩn do kiểm duyệt.
+    /// </summary>
+    Task<int> CountHiddenAsync(CancellationToken ct = default);
 }
 
 /// <summary>
@@ -98,6 +122,30 @@ public interface ICategoryRepository : IRepository<Category>
     /// Lấy tất cả danh mục (kèm số lượng tin đăng) sắp xếp theo Order.
     /// </summary>
     Task<List<(Category Category, int ItemCount)>> ListWithCountsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Lấy danh mục kèm số tin đăng đang bán VÀ số tin đang bị ẩn do kiểm duyệt.
+    /// Dùng cho bảng quản lý danh mục của Admin / Moderator.
+    /// </summary>
+    Task<List<(Category Category, int ItemCount, int HiddenItemCount)>> ListForManagementAsync(
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Đếm số tin đăng (chưa gỡ) của một danh mục — dùng để chặn xoá danh
+    /// mục còn tin.
+    /// </summary>
+    Task<int> CountItemsAsync(int categoryId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Kiểm tra slug đã tồn tại chưa (dùng khi tạo / đổi tên danh mục).
+    /// </summary>
+    Task<bool> ExistsBySlugAsync(string slug, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lấy giá trị Order lớn nhất hiện tại — dùng để đặt danh mục mới
+    /// xuống cuối danh sách.
+    /// </summary>
+    Task<int> GetMaxOrderAsync(CancellationToken ct = default);
 }
 
 /// <summary>

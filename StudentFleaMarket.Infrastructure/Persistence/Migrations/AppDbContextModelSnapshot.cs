@@ -160,6 +160,11 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -176,6 +181,8 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(150)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
 
                     b.HasIndex("Slug")
                         .IsUnique();
@@ -323,6 +330,16 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("HiddenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("HiddenByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("HiddenReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -330,6 +347,11 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsExchangeEnabled")
                         .HasColumnType("boolean");
+
+                    b.Property<bool>("IsHidden")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("ItemCode")
                         .IsRequired()
@@ -375,6 +397,8 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.HasIndex("Condition");
 
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("HiddenByUserId");
 
                     b.HasIndex("ItemCode")
                         .IsUnique();
@@ -556,14 +580,19 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("AdminNote")
-                        .HasColumnType("text");
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid?>("ConversationId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<Guid?>("ItemId")
                         .HasColumnType("uuid");
@@ -586,15 +615,33 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
+                    b.Property<Guid?>("TransactionId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("CreatedAt");
 
                     b.HasIndex("ItemId");
 
                     b.HasIndex("ReportedUserId");
 
-                    b.HasIndex("ReporterId");
-
                     b.HasIndex("ResolvedById");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("TransactionId");
+
+                    b.HasIndex("ReporterId", "ConversationId")
+                        .IsUnique();
+
+                    b.HasIndex("ReporterId", "ItemId")
+                        .IsUnique();
+
+                    b.HasIndex("ReporterId", "TransactionId")
+                        .IsUnique();
 
                     b.ToTable("Reports");
                 });
@@ -606,10 +653,14 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("Comment")
-                        .HasColumnType("text");
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsVoided")
+                        .HasColumnType("boolean");
 
                     b.Property<int>("Rating")
                         .HasColumnType("integer");
@@ -623,16 +674,37 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TransactionId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("VoidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("VoidedByReportId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("VoidedByUserId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("RevieweeId");
 
                     b.HasIndex("ReviewerId");
 
-                    b.HasIndex("TransactionId")
+                    b.HasIndex("VoidedByReportId");
+
+                    b.HasIndex("TransactionId", "ReviewerId")
                         .IsUnique();
 
-                    b.ToTable("Reviews");
+                    b.ToTable("Reviews", t =>
+                        {
+                            t.HasCheckConstraint("CK_Reviews_Rating", "\"Rating\" >= 1 AND \"Rating\" <= 5");
+                        });
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.ServiceAccount", b =>
@@ -760,6 +832,42 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.HasIndex("Type");
 
                     b.ToTable("Transactions");
+                });
+
+            modelBuilder.Entity("StudentFleaMarket.Domain.Entities.TransactionConfirmation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ItemCodeVerified")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<bool>("ItemReceivedOk")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("TransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("TransactionId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("TransactionConfirmations");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.VerificationCode", b =>
@@ -909,6 +1017,11 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "HiddenBy")
+                        .WithMany()
+                        .HasForeignKey("HiddenByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Seller")
                         .WithMany("Items")
                         .HasForeignKey("SellerId")
@@ -916,6 +1029,8 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Category");
+
+                    b.Navigation("HiddenBy");
 
                     b.Navigation("Seller");
                 });
@@ -982,18 +1097,23 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Report", b =>
                 {
+                    b.HasOne("StudentFleaMarket.Domain.Entities.Conversation", "Conversation")
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("StudentFleaMarket.Domain.Entities.Item", "Item")
                         .WithMany()
                         .HasForeignKey("ItemId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "ReportedUser")
-                        .WithMany()
+                        .WithMany("ReportsAgainst")
                         .HasForeignKey("ReportedUserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Reporter")
-                        .WithMany()
+                        .WithMany("ReportsSubmitted")
                         .HasForeignKey("ReporterId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -1003,6 +1123,13 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ResolvedById")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("StudentFleaMarket.Domain.Entities.Transaction", "Transaction")
+                        .WithMany()
+                        .HasForeignKey("TransactionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Conversation");
+
                     b.Navigation("Item");
 
                     b.Navigation("ReportedUser");
@@ -1010,33 +1137,42 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Navigation("Reporter");
 
                     b.Navigation("ResolvedBy");
+
+                    b.Navigation("Transaction");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Review", b =>
                 {
                     b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Reviewee")
-                        .WithMany()
+                        .WithMany("ReviewsReceived")
                         .HasForeignKey("RevieweeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Reviewer")
-                        .WithMany()
+                        .WithMany("ReviewsWritten")
                         .HasForeignKey("ReviewerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("StudentFleaMarket.Domain.Entities.Transaction", "Transaction")
-                        .WithOne("Review")
-                        .HasForeignKey("StudentFleaMarket.Domain.Entities.Review", "TransactionId")
+                        .WithMany("Reviews")
+                        .HasForeignKey("TransactionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("StudentFleaMarket.Domain.Entities.Report", "VoidedByReport")
+                        .WithMany()
+                        .HasForeignKey("VoidedByReportId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Reviewee");
 
                     b.Navigation("Reviewer");
 
                     b.Navigation("Transaction");
+
+                    b.Navigation("VoidedByReport");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.ServiceAccount", b =>
@@ -1083,6 +1219,25 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Navigation("Item");
                 });
 
+            modelBuilder.Entity("StudentFleaMarket.Domain.Entities.TransactionConfirmation", b =>
+                {
+                    b.HasOne("StudentFleaMarket.Domain.Entities.Transaction", "Transaction")
+                        .WithMany("Confirmations")
+                        .HasForeignKey("TransactionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "User")
+                        .WithMany("TransactionConfirmations")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Transaction");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.VerificationCode", b =>
                 {
                     b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "User")
@@ -1100,6 +1255,16 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Navigation("Items");
 
                     b.Navigation("RefreshTokens");
+
+                    b.Navigation("ReportsAgainst");
+
+                    b.Navigation("ReportsSubmitted");
+
+                    b.Navigation("ReviewsReceived");
+
+                    b.Navigation("ReviewsWritten");
+
+                    b.Navigation("TransactionConfirmations");
 
                     b.Navigation("VerificationCodes");
                 });
@@ -1123,9 +1288,11 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Transaction", b =>
                 {
+                    b.Navigation("Confirmations");
+
                     b.Navigation("Payment");
 
-                    b.Navigation("Review");
+                    b.Navigation("Reviews");
                 });
 #pragma warning restore 612, 618
         }

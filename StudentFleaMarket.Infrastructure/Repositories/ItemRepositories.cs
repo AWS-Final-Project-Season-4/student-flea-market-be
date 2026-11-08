@@ -31,6 +31,13 @@ public class ItemRepository : EfRepository<Item>, IItemRepository
         else
             q = q.Where(i => i.Status == (int)Domain.Enums.ItemStatus.Available);
 
+        // ----- Lọc tin bị kiểm duyệt ẩn -----
+        // Tin bị ẩn KHÔNG hiển thị công khai. Nhưng chủ tin vẫn phải thấy tin
+        // của mình (để biết vì sao bị ẩn) — xử lý ở ItemService: nếu người
+        // xem là chủ tin thì bỏ qua bộ lọc này.
+        if (!includeAllStatuses)
+            q = q.Where(i => !i.IsHidden);
+
         // ----- Tìm kiếm theo từ khóa tiêu đề -----
         if (!string.IsNullOrWhiteSpace(query.Keyword))
         {
@@ -203,11 +210,64 @@ public class ItemRepository : EfRepository<Item>, IItemRepository
         await DbContext.ItemImages.AddAsync(image, ct);
     }
 
-    public Task RemoveImageAsync(ItemImage image, CancellationToken ct = default)
+    public async Task RemoveImageAsync(ItemImage image, CancellationToken ct = default)
     {
         DbContext.ItemImages.Remove(image);
-        return Task.CompletedTask;
+        await Task.CompletedTask;
     }
+
+    // ---------------------------------------------------- KIỂM DUYỆT TIN ĐĂNG
+
+    /// <summary>
+    /// Ẩn tin đăng do vi phạm (IsHidden = true).
+    ///
+    /// KHÁC với RemoveAllBySellerAsync (soft delete): tin ẩn vẫn còn trong DB,
+    /// chủ tin vẫn thấy được kèm lý do bị ẩn, và có thể bỏ ẩn nếu xử lý nhầm.
+    /// </summary>
+    public async Task<bool> HideAsync(
+        Guid itemId,
+        Guid staffUserId,
+        string reason,
+        CancellationToken ct = default)
+    {
+        var item = await DbSet.FirstOrDefaultAsync(i => i.Id == itemId, ct);
+
+        if (item is null || item.IsHidden)
+            return false;
+
+        item.IsHidden = true;
+        item.HiddenByUserId = staffUserId;
+        item.HiddenReason = reason;
+        item.HiddenAt = DateTime.UtcNow;
+        item.UpdatedAt = DateTime.UtcNow;
+
+        DbSet.Update(item);
+        await SaveChangesAsync(ct);
+
+        return true;
+    }
+
+    public async Task<bool> UnhideAsync(Guid itemId, CancellationToken ct = default)
+    {
+        var item = await DbSet.FirstOrDefaultAsync(i => i.Id == itemId, ct);
+
+        if (item is null || !item.IsHidden)
+            return false;
+
+        item.IsHidden = false;
+        item.HiddenByUserId = null;
+        item.HiddenReason = null;
+        item.HiddenAt = null;
+        item.UpdatedAt = DateTime.UtcNow;
+
+        DbSet.Update(item);
+        await SaveChangesAsync(ct);
+
+        return true;
+    }
+
+    public Task<int> CountHiddenAsync(CancellationToken ct = default)
+        => DbSet.AsNoTracking().CountAsync(i => i.IsHidden, ct);
 }
 
 public class CategoryRepository : EfRepository<Category>, ICategoryRepository
@@ -231,6 +291,40 @@ public class CategoryRepository : EfRepository<Category>, ICategoryRepository
             .ToListAsync(ct);
 
         return rows.Select(x => (x.Category, x.ItemCount)).ToList();
+    }
+
+    public async Task<List<(Category Category, int ItemCount, int HiddenItemCount)>> ListForManagementAsync(
+        CancellationToken ct = default)
+    {
+        var rows = await DbSet
+            .AsNoTracking()
+            .OrderBy(c => c.Order)
+            .ThenBy(c => c.Name)
+            .Select(c => new
+            {
+                Category = c,
+                ItemCount = c.Items.Count(i => !i.IsDeleted && i.Status == (int)Domain.Enums.ItemStatus.Available),
+                HiddenItemCount = c.Items.Count(i => i.IsHidden)
+            })
+            .ToListAsync(ct);
+        return rows.Select(x => (x.Category, x.ItemCount, x.HiddenItemCount)).ToList();
+    }
+
+    public Task<int> CountItemsAsync(int categoryId, CancellationToken ct = default)
+        => DbSet.AsNoTracking()
+            .SelectMany(c => c.Items)
+            .CountAsync(i => i.CategoryId == categoryId && !i.IsDeleted, ct);
+
+    public Task<bool> ExistsBySlugAsync(string slug, CancellationToken ct = default)
+        => DbSet.AsNoTracking().AnyAsync(c => c.Slug == slug, ct);
+
+    public async Task<int> GetMaxOrderAsync(CancellationToken ct = default)
+    {
+        var max = await DbSet.AsNoTracking()
+            .Select(c => (int?)c.Order)
+            .MaxAsync(ct);
+
+        return max ?? 0;
     }
 }
 

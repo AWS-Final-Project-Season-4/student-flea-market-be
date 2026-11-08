@@ -23,6 +23,7 @@ public class AppDbContext: DbContext
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Report> Reports => Set<Report>();
+    public DbSet<TransactionConfirmation> TransactionConfirmations => Set<TransactionConfirmation>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<VerificationCode> VerificationCodes => Set<VerificationCode>();
     public DbSet<ServiceAccount> ServiceAccounts => Set<ServiceAccount>();
@@ -134,7 +135,10 @@ public class AppDbContext: DbContext
             entity.HasIndex(c => c.Slug).IsUnique();
             entity.Property(c => c.Name).IsRequired().HasMaxLength(100);
             entity.Property(c => c.Slug).IsRequired().HasMaxLength(150);
-            entity.Property(c => c.Order).HasDefaultValue(0); 
+            entity.Property(c => c.Order).HasDefaultValue(0);
+            // Danh mục mở (cho phép đăng tin mới) — mặc định true.
+            entity.Property(c => c.IsActive).HasDefaultValue(true);
+            entity.HasIndex(c => c.IsActive);
             
         });
 
@@ -148,6 +152,14 @@ public class AppDbContext: DbContext
             entity.Property(i => i.Price).HasPrecision(18, 2);
             entity.Property(i => i.Location).HasMaxLength(255);
             entity.Property(i => i.IsDeleted).HasDefaultValue(false);
+            // Tin bị kiểm duyệt ẩn — mặc định false (hiển thị).
+            entity.Property(i => i.IsHidden).HasDefaultValue(false);
+            entity.Property(i => i.HiddenReason).HasMaxLength(500);
+
+            entity.HasOne(i => i.HiddenBy)
+                .WithMany()
+                .HasForeignKey(i => i.HiddenByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
 
             // ItemCode — mã hàng 8 ký tự cho người dùng giao tiếp với hệ thống.
             // Bắt buộc duy nhất toàn hệ thống để user tra cứu không bị nhầm.
@@ -353,45 +365,97 @@ public class AppDbContext: DbContext
                   .OnDelete(DeleteBehavior.Restrict);
         });
 
-        //Review (Unique on TransactionId)
+        //Review
+        //  - Unique (TransactionId, ReviewerId): mỗi người chỉ đánh giá 1 lần
+        //    cho mỗi đơn. Nhờ vậy đơn Exchange có thể có 2 đánh giá (2 bên),
+        //    còn đơn Purchase/Free có đúng 1 (chỉ người mua đánh giá).
+        //  - Rating có check constraint 1..5 ở tầng DB (defense in depth).
         modelBuilder.Entity<Review>(entity =>
         {
             entity.HasKey(r => r.Id);
-            entity.HasIndex(r => r.TransactionId).IsUnique();
+            entity.HasIndex(r => new { r.TransactionId, r.ReviewerId }).IsUnique();
+            entity.HasIndex(r => r.RevieweeId);
+            entity.Property(r => r.Comment).HasMaxLength(500);
+            entity.Property(r => r.VoidReason).HasMaxLength(500);
+            entity.ToTable(t => t.HasCheckConstraint("CK_Reviews_Rating", "\"Rating\" >= 1 AND \"Rating\" <= 5"));
             entity.HasOne(r => r.Transaction)
-                  .WithOne(t => t.Review)
-                  .HasForeignKey<Review>(r => r.TransactionId)
+                  .WithMany(t => t.Reviews)
+                  .HasForeignKey(r => r.TransactionId)
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(r => r.Reviewer)
-                  .WithMany()
+                  .WithMany(u => u.ReviewsWritten)
                   .HasForeignKey(r => r.ReviewerId)
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(r => r.Reviewee)
-                  .WithMany()
+                  .WithMany(u => u.ReviewsReceived)
                   .HasForeignKey(r => r.RevieweeId)
                   .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(r => r.VoidedByReport)
+                  .WithMany()
+                  .HasForeignKey(r => r.VoidedByReportId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
 
         //Report
+        //  - 3 dạng báo cáo: bài đăng (ItemId), giao dịch (TransactionId),
+        //    hội thoại chat (ConversationId).
+        //  - Unique riêng cho từng dạng để chống spam report trùng.
         modelBuilder.Entity<Report>(entity =>
         {
             entity.HasKey(rep => rep.Id);
-            entity.Property(rep => rep.Description).IsRequired();
+            entity.Property(rep => rep.Description).IsRequired().HasMaxLength(1000);
+            entity.Property(rep => rep.AdminNote).HasMaxLength(1000);
+            entity.HasIndex(rep => rep.Status);
+            entity.HasIndex(rep => rep.CreatedAt);
+            // Unique để chống spam report trùng. Với Postgres, NULL được coi là
+            // giá trị khác nhau nên: 1 người có thể report nhiều tin khác nhau
+            // (TransactionId = NULL) nhưng không report trùng 1 tin / 1 đơn /
+            // 1 hội thoại.
+            entity.HasIndex(rep => new { rep.ReporterId, rep.TransactionId }).IsUnique();
+            entity.HasIndex(rep => new { rep.ReporterId, rep.ItemId }).IsUnique();
+            entity.HasIndex(rep => new { rep.ReporterId, rep.ConversationId }).IsUnique();
             entity.HasOne(rep => rep.Reporter)
-                  .WithMany()
+                  .WithMany(u => u.ReportsSubmitted)
                   .HasForeignKey(rep => rep.ReporterId)
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(rep => rep.ReportedUser)
-                  .WithMany()
+                  .WithMany(u => u.ReportsAgainst)
                   .HasForeignKey(rep => rep.ReportedUserId)
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(rep => rep.Item)
                   .WithMany()
                   .HasForeignKey(rep => rep.ItemId)
                   .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(rep => rep.Transaction)
+                  .WithMany()
+                  .HasForeignKey(rep => rep.TransactionId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(rep => rep.Conversation)
+                  .WithMany()
+                  .HasForeignKey(rep => rep.ConversationId)
+                  .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(rep => rep.ResolvedBy)
                   .WithMany()
                   .HasForeignKey(rep => rep.ResolvedById)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        //TransactionConfirmation (xác nhận bàn giao cho đơn đổi đồ)
+        modelBuilder.Entity<TransactionConfirmation>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+            entity.HasIndex(c => new { c.TransactionId, c.UserId }).IsUnique();
+            entity.HasIndex(c => c.UserId);
+            entity.Property(c => c.Note).HasMaxLength(1000);
+            entity.Property(c => c.ItemCodeVerified).HasMaxLength(8);
+
+            entity.HasOne(c => c.Transaction)
+                  .WithMany(t => t.Confirmations)
+                  .HasForeignKey(c => c.TransactionId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(c => c.User)
+                  .WithMany(u => u.TransactionConfirmations)
+                  .HasForeignKey(c => c.UserId)
                   .OnDelete(DeleteBehavior.Restrict);
         });
 
