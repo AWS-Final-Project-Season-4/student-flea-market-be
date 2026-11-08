@@ -34,6 +34,16 @@ public class ItemService : IItemService
         var category = await _categoryRepo.GetByIdAsync(request.CategoryId, ct)
             ?? throw new NotFoundException("Danh mục không tồn tại.", "CATEGORY_NOT_FOUND");
 
+        // ---------------------------------------------------------------
+        // Danh mục đã ĐÓNG -> không cho đăng tin mới vào.
+        // (Feature 5 - Admin Dashboard: quản trị viên đóng danh mục khi nhóm
+        // hàng đó bị phát hiện có rủi ro, ví dụ tin giả hoặc giao dịch lừa đảo.)
+        // ---------------------------------------------------------------
+        if (!category.IsActive)
+            throw new ValidationException(
+                $"Danh mục \"{category.Name}\" hiện đang tạm đóng nên không thể đăng tin mới.",
+                "CATEGORY_INACTIVE");
+
         // Người bán phải là tài khoản thật (loại trừ tài khoản dịch vụ AI)
         var seller = await _userRepo.GetByIdAsync(sellerId, ct)
             ?? throw new NotFoundException("Không tìm thấy người dùng.", "USER_NOT_FOUND");
@@ -120,6 +130,13 @@ public class ItemService : IItemService
         {
             var newCategory = await _categoryRepo.GetByIdAsync(request.CategoryId.Value, ct)
                 ?? throw new NotFoundException("Danh mục không tồn tại.", "CATEGORY_NOT_FOUND");
+
+            // Không chuyển tin sang danh mục đang đóng (giống lúc tạo tin).
+            if (!newCategory.IsActive)
+                throw new ValidationException(
+                    $"Danh mục \"{newCategory.Name}\" hiện đang tạm đóng nên không thể chuyển tin sang.",
+                    "CATEGORY_INACTIVE");
+
             item.CategoryId = newCategory.Id;
         }
 
@@ -300,7 +317,10 @@ public class ItemService : IItemService
     {
         var rows = await _categoryRepo.ListWithCountsAsync(ct);
 
+        // Chỉ trả về danh mục ĐANG MỞ. Danh mục đã đóng không hiển thị công
+        // khai (tính năng đóng/mở danh mục của Admin Dashboard).
         return rows
+            .Where(r => r.Category.IsActive)
             .Select(r => new CategoryDto
             {
                 Id = r.Category.Id,
