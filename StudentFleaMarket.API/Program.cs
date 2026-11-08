@@ -193,21 +193,21 @@ builder.Services.AddSwaggerGen(options =>
 
         var tag = controllerName switch
         {
-            "ItemsController" => "1. Tìm kiếm & Xem tin",
-            "ItemsForSaleController" => "2. Đăng bán & Quản lý tin",
-            "FavoritesController" => "3. Yêu thích (Wishlist)",
-            "SellerController" => "4. Quyền bán hàng (Seller)",
-            "AdminSellerController" => "5. Quản trị - Duyệt người bán",
-            "AdminUsersController" => "6. Quản trị - Quản lý & cấm tài khoản",
-            "AdminModeratorsController" => "7. Quản trị - Kiểm duyệt viên (Moderator)",
-            "ExchangeRequestsController" => "8. Yêu cầu đổi đồ",
-            "TransactionsController" => "9. Giao dịch & Thanh toán",
-            "ChatController" => "10. Trò chuyện (Chat)",
-            "SellersController" => "11. Hồ sơ người bán & Uy tín",
-            "ReviewsController" => "12. Đánh giá uy tín (Reviews)",
-            "ReportsController" => "13. Báo cáo vi phạm (Reports)",
-            "AdminModerationController" => "14. Quản trị - Kiểm duyệt report",
-            "AdminCategoriesController" => "15. Quản trị - Quản lý danh mục",
+            "ItemsController" => "Tìm kiếm & Xem tin",
+            "ItemsForSaleController" => "Đăng bán & Quản lý tin",
+            "FavoritesController" => "Yêu thích (Wishlist)",
+            "SellerController" => "Quyền bán hàng (Seller)",
+            "AdminSellerController" => "Quản trị - Duyệt người bán",
+            "AdminUsersController" => "Quản trị - Quản lý & cấm tài khoản",
+            "AdminModeratorsController" => "Quản trị - Kiểm duyệt viên (Moderator)",
+            "ExchangeRequestsController" => "Yêu cầu đổi đồ",
+            "TransactionsController" => "Giao dịch & Thanh toán",
+            "ChatController" => "Trò chuyện (Chat)",
+            "SellersController" => "Hồ sơ người bán & Uy tín",
+            "ReviewsController" => "Đánh giá uy tín (Reviews)",
+            "ReportsController" => "Báo cáo vi phạm (Reports)",
+            "AdminModerationController" => "Quản trị - Kiểm duyệt report",
+            "AdminCategoriesController" => "Quản trị - Quản lý danh mục",
             _ => controllerName ?? "Khác"
         };
 
