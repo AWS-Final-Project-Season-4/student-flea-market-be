@@ -39,6 +39,7 @@ public class TransactionService : ITransactionService
     private readonly IItemRepository _itemRepo;
     private readonly IUserRepository _userRepo;
     private readonly IEmailSender _emailSender;
+    private readonly ITransactionConfirmationRepository _confirmRepo;
 
     public TransactionService(
         ITransactionRepository txRepo,
@@ -46,7 +47,8 @@ public class TransactionService : ITransactionService
         IExchangeRequestRepository erRepo,
         IItemRepository itemRepo,
         IUserRepository userRepo,
-        IEmailSender emailSender)
+        IEmailSender emailSender,
+        ITransactionConfirmationRepository confirmRepo)
     {
         _txRepo = txRepo;
         _paymentRepo = paymentRepo;
@@ -54,6 +56,7 @@ public class TransactionService : ITransactionService
         _itemRepo = itemRepo;
         _userRepo = userRepo;
         _emailSender = emailSender;
+        _confirmRepo = confirmRepo;
     }
 
     // =====================================================================
@@ -318,6 +321,45 @@ public class TransactionService : ITransactionService
                 "Tin đăng không còn ở trạng thái đang bán.",
                 "ITEM_NOT_AVAILABLE");
 
+        // ---------------------------------------------------------------
+        // ĐƠN ĐỔI ĐỒ: BẮT BUỘC CẢ 2 BÊN XÁC NHẬN.
+        //
+        // Ở Exchange có 2 món đi ngược chiều. Nếu chỉ 1 bên bấm "Hoàn tất"
+        // thì bên đó có thể chiếm đoạt món của mình mà không cần gặp mặt —
+        // đồng thời tạo ra một đánh giá 5 sao giả. Vì vậy bước "hoàn thành"
+        // chỉ được ghi nhận là ĐÃ XÁC NHẬN của 1 bên; đơn chuyển sang
+        // AwaitingConfirmation và chờ bên kia xác nhận.
+        //
+        // Đơn mua trực tiếp / nhận miễn phí không có 2 món nên vẫn hoàn
+        // thành ngay 1 bước như cũ.
+        // ---------------------------------------------------------------
+        if (tx.Type == (int)TransactionType.Exchange)
+        {
+            // KHÔNG ghi nhận xác nhận ở bước này.
+            // Nút "Hoàn tất" chỉ nghĩa là "tôi đã gặp mặt và đồ đúng là của tôi",
+            // chưa có gì để đối chiếu mã hàng. Việc xác nhận bàn giao (kèm
+            // kiểm tra mã hàng) phải là hành động riêng của MỖI bên qua
+            // endpoint /handover — nếu ghi nhận ở đây thì bên bấm "Hoàn tất"
+            // sẽ tự động "xác nhận đúng món" mà không hề kiểm tra mã.
+            tx.Status = (int)TransactionStatus.AwaitingConfirmation;
+
+            _txRepo.Update(tx);
+            await _txRepo.SaveChangesAsync(ct);
+
+            await NotifyCounterpartyAsync(
+                tx.Counterparty?.Email,
+                tx.Counterparty?.FullName,
+                tx.Initiator?.FullName ?? "",
+                item.Title,
+                tx.Type,
+                ct,
+                subject: "Giao dịch đổi đồ đang chờ bạn xác nhận",
+                intro: "Bạn đã xác nhận giao dịch đổi đồ với món đồ <b>{0}</b>. Vui lòng xác nhận bàn giao để hoàn tất giao dịch.",
+                itemCode: item.ItemCode);
+
+            return await BuildDtoAsync(tx.Id, userId, ct);
+        }
+
         tx.Status = (int)TransactionStatus.Completed;
         tx.CompletedAt = DateTime.UtcNow;
 
@@ -357,6 +399,273 @@ public class TransactionService : ITransactionService
             itemCode: item.ItemCode);
 
         return await BuildDtoAsync(tx.Id, userId, ct);
+    }
+
+    // =====================================================================
+    // XÁC NHẬN BÀN GIAO (đơn đổi đồ)
+    // =====================================================================
+    public async Task<HandoverConfirmationDto> ConfirmHandoverAsync(
+        Guid userId,
+        Guid transactionId,
+        ConfirmHandoverDto? request,
+        CancellationToken ct = default)
+    {
+        var tx = await GetTrackedAsync(transactionId, ct);
+
+        EnsureParticipant(tx, userId);
+
+        if (tx.Type != (int)TransactionType.Exchange)
+            throw new ValidationException(
+                "Chỉ giao dịch đổi đồ mới cần xác nhận bàn giao.",
+                "NOT_EXCHANGE_TRANSACTION");
+
+        if ((TransactionStatus)tx.Status is not (TransactionStatus.Pending or TransactionStatus.AwaitingConfirmation))
+            throw new ConflictException(
+                $"Đơn giao dịch đang ở trạng thái \"{TransactionLabels.StatusName(tx.Status)}\" nên không thể xác nhận.",
+                "TRANSACTION_NOT_PENDING");
+
+        // ---------------------------------------------------------------
+        // MÓN ĐỒ ĐÁNG LẼ BÊN NÀY PHẢI NHẬN.
+        //
+        // VỚI ĐƠN ĐỔI ĐỒ có 2 món đi ngược chiều:
+        //   - tx.Item      = món của BÊN KIA mang đến cho mình (người nhận yêu cầu).
+        //   - OfferedItem  = món của CHÍNH MÌNH mang đến cho bên kia.
+        //
+        // Nên mỗi bên phải nhận món CỦA BÊN KIA. Nếu dùng chung tx.Item cho
+        // cả 2 bên thì bên nhận sẽ phải nhập mã của chính món mình mang
+        // đi -> luôn khớp -> mất hết tác dụng phát hiện tráo hàng.
+        // ---------------------------------------------------------------
+        var expectedItem = await ResolveExpectedReceivedItemAsync(tx, userId, ct)
+            ?? throw new NotFoundException("Không tìm thấy tin đăng.", "ITEM_NOT_FOUND");
+
+        // Bên đã xác nhận rồi thì không xác nhận lại được (chống sửa nhiều lần).
+        var existing = await _confirmRepo.GetByTransactionAndUserAsync(tx.Id, userId, ct);
+        if (existing is not null)
+            throw new ConflictException(
+                "Bạn đã xác nhận giao dịch này rồi.",
+                "ALREADY_CONFIRMED_HANDOVER");
+
+        var receivedOk = request?.ItemReceivedOk ?? true;
+        var enteredCode = string.IsNullOrWhiteSpace(request?.ItemCodeVerified)
+            ? null
+            : ItemCodeHelper.Normalize(request.ItemCodeVerified);
+
+        // ---------------------------------------------------------------
+        // ĐỐI CHIẾU MÃ HÀNG — phát hiện tráo hàng ngay tại chỗ.
+        // Nếu mã nhập vào KHÔNG khớp mã món đáng lẽ phải nhận, thì bên này
+        // đã mang món khác đến. Ta KHÔNG cho xác nhận "đã nhận đúng".
+        // ---------------------------------------------------------------
+        bool? codeMatched = null;
+
+        if (enteredCode is not null)
+        {
+            codeMatched = string.Equals(enteredCode, expectedItem.ItemCode, StringComparison.OrdinalIgnoreCase);
+
+            if (!codeMatched.Value && receivedOk)
+                throw new ValidationException(
+                    $"Mã hàng bạn nhập (\"{enteredCode}\") không khớp với món đồ đáng lẽ được nhận " +
+                    $"(\"{expectedItem.ItemCode}\"). Có thể bạn đã nhận nhầm món hoặc bị trả hàng sai. " +
+                    "Vui lòng đánh dấu là không đúng món để gửi báo cáo.",
+                    "ITEM_CODE_MISMATCH");
+        }
+
+        await RecordConfirmationAsync(tx, userId, receivedOk, enteredCode, ct);
+
+        // ---------------------------------------------------------------
+        // Đếm số bên đã xác nhận -> quyết định đơn hoàn thành hay chờ.
+        // ---------------------------------------------------------------
+        var confirmations = await _confirmRepo.GetByTransactionAsync(tx.Id, ct);
+        var confirmedCount = confirmations.Count;
+
+        if (confirmedCount >= 2)
+        {
+            // Cả 2 bên đã xác nhận -> hoàn thành thật sự.
+            tx.Status = (int)TransactionStatus.Completed;
+            tx.CompletedAt = DateTime.UtcNow;
+
+            _txRepo.Update(tx);
+            await _txRepo.SaveChangesAsync(ct);
+
+            var item = await _itemRepo.GetByIdAsync(tx.ItemId, ct);
+            if (item is not null)
+                await MarkItemSoldAsync(item, tx, ct);
+
+            // Món đồ đem đổi cũng chuyển sang "đã bán".
+            if (tx.ExchangeRequestId.HasValue)
+            {
+                var er = await _erRepo.GetDetailAsync(tx.ExchangeRequestId.Value, ct);
+                if (er?.OfferedItem is not null)
+                {
+                    var offered = await _itemRepo.GetByIdAsync(er.OfferedItem.Id, ct);
+                    if (offered is not null && offered.Status == (int)ItemStatus.Available)
+                    {
+                        offered.Status = (int)ItemStatus.Sold;
+                        offered.UpdatedAt = DateTime.UtcNow;
+                        _itemRepo.Update(offered);
+                        await _itemRepo.SaveChangesAsync(ct);
+                    }
+                }
+            }
+
+            await NotifyCounterpartyAsync(
+                tx.Counterparty?.Email,
+                tx.Counterparty?.FullName,
+                tx.Initiator?.FullName ?? "",
+                tx.Item?.Title ?? "",
+                tx.Type,
+                ct,
+                subject: "Giao dịch đổi đồ đã hoàn thành",
+                intro: "Cả hai bên đã xác nhận bàn giao món đồ <b>{0}</b>. Giao dịch hoàn thành, hai bên có thể đánh giá nhau.",
+                itemCode: tx.Item?.ItemCode);
+        }
+        else
+        {
+            // Chỉ 1 bên xác nhận -> chờ bên kia.
+            tx.Status = (int)TransactionStatus.AwaitingConfirmation;
+            _txRepo.Update(tx);
+            await _txRepo.SaveChangesAsync(ct);
+
+            await NotifyCounterpartyAsync(
+                tx.Counterparty?.Email,
+                tx.Counterparty?.FullName,
+                tx.Initiator?.FullName ?? "",
+                tx.Item?.Title ?? "",
+                tx.Type,
+                ct,
+                subject: "Giao dịch đổi đồ đang chờ bạn xác nhận",
+                intro: "Bạn đã xác nhận giao dịch đổi đồ với món đồ <b>{0}</b>. Vui lòng xác nhận bàn giao để hoàn tất giao dịch.",
+                itemCode: tx.Item?.ItemCode);
+        }
+
+        var result = await BuildHandoverDtoAsync(tx.Id, userId, ct);
+
+        return result;
+    }
+
+    public async Task<HandoverConfirmationDto> GetHandoverStatusAsync(
+        Guid userId,
+        Guid transactionId,
+        CancellationToken ct = default)
+    {
+        var tx = await GetTrackedAsync(transactionId, ct);
+
+        EnsureParticipant(tx, userId);
+
+        return await BuildHandoverDtoAsync(tx.Id, userId, ct);
+    }
+
+    /// <summary>
+    /// Ghi nhận xác nhận của một bên vào bảng TransactionConfirmations.
+    /// </summary>
+    private async Task RecordConfirmationAsync(
+        Transaction tx,
+        Guid userId,
+        bool? itemReceivedOk,
+        string? itemCodeVerified,
+        CancellationToken ct)
+    {
+        var confirmation = new TransactionConfirmation
+        {
+            Id = Guid.NewGuid(),
+            TransactionId = tx.Id,
+            UserId = userId,
+            ConfirmedAt = DateTime.UtcNow,
+            ItemReceivedOk = itemReceivedOk ?? true,
+            ItemCodeVerified = itemCodeVerified,
+            Note = null
+        };
+
+        await _confirmRepo.AddAsync(confirmation, ct);
+        await _confirmRepo.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Xác định món đồ mà bên <paramref name="userId"/> ĐÁNG LẼ phải nhận.
+    ///
+    /// Đơn Exchange có 2 món đi ngược chiều:
+    ///   - tx.Item     = món của bên kia mang đến cho mình.
+    ///   - OfferedItem = món của chính mình mang đến cho bên kia.
+    ///
+    /// Nên:
+    ///   - Bên nhận yêu cầu (chủ RequestedItem) đáng lẽ nhận OfferedItem
+    ///     (món của người gửi yêu cầu mang đến).
+    ///   - Bên gửi yêu cầu đáng lẽ nhận RequestedItem (tx.Item).
+    ///
+    /// Nếu cả 2 bên dùng chung tx.Item thì mã hàng luôn khớp với chính món
+    /// mình mang đi -> mất hết tác dụng phát hiện tráo hàng.
+    /// </summary>
+    private async Task<Item?> ResolveExpectedReceivedItemAsync(
+        Transaction tx,
+        Guid userId,
+        CancellationToken ct)
+    {
+        if (tx.Type != (int)TransactionType.Exchange || !tx.ExchangeRequestId.HasValue)
+        {
+            // Đơn mua trực tiếp: chỉ có 1 món, và người mua là người nhận.
+            return await _itemRepo.GetByIdAsync(tx.ItemId, ct);
+        }
+
+        var er = await _erRepo.GetDetailAsync(tx.ExchangeRequestId.Value, ct);
+        if (er is null)
+            return await _itemRepo.GetByIdAsync(tx.ItemId, ct);
+
+        var offeredItem = er.OfferedItem;
+
+        // Người gửi yêu cầu mang món của mình (OfferedItem) đến cho bên kia,
+        // nên họ đáng lẽ phải nhận món của bên kia (RequestedItem = tx.Item).
+        if (er.RequesterId == userId)
+            return await _itemRepo.GetByIdAsync(tx.ItemId, ct);
+
+        // Bên nhận yêu cầu mang món của bên kia (RequestedItem) đến,
+        // nên họ đáng lẽ phải nhận OfferedItem.
+        return offeredItem is null
+            ? await _itemRepo.GetByIdAsync(tx.ItemId, ct)
+            : await _itemRepo.GetByIdAsync(offeredItem.Id, ct);
+    }
+
+    private async Task<HandoverConfirmationDto> BuildHandoverDtoAsync(
+        Guid transactionId,
+        Guid viewerId,
+        CancellationToken ct)
+    {
+        var tx = await _txRepo.GetDetailAsync(transactionId, ct)
+            ?? throw new NotFoundException("Không tìm thấy đơn giao dịch.", "TRANSACTION_NOT_FOUND");
+
+        var confirmations = await _confirmRepo.GetByTransactionAsync(tx.Id, ct);
+
+        var myConfirmation = confirmations.FirstOrDefault(c => c.UserId == viewerId);
+
+        var expectedItem = await ResolveExpectedReceivedItemAsync(tx, viewerId, ct);
+
+        bool? codeMatched = null;
+        if (myConfirmation?.ItemCodeVerified is not null && expectedItem is not null)
+            codeMatched = string.Equals(
+                myConfirmation.ItemCodeVerified,
+                expectedItem.ItemCode,
+                StringComparison.OrdinalIgnoreCase);
+
+        var isCompleted = (TransactionStatus)tx.Status == TransactionStatus.Completed;
+
+        string? suggestion = null;
+        if (myConfirmation is not null && !myConfirmation.ItemReceivedOk)
+            suggestion = "Bạn đã đánh dấu món nhận được không đúng. Hãy gửi báo cáo để nhân viên xử lý.";
+        else if (myConfirmation is null && !isCompleted)
+            suggestion = "Hãy xác nhận bàn giao để hoàn tất giao dịch.";
+        else if (isCompleted)
+            suggestion = "Giao dịch đã hoàn thành. Hai bên có thể đánh giá nhau.";
+
+        return new HandoverConfirmationDto
+        {
+            TransactionId = tx.Id,
+            Status = tx.Status,
+            StatusName = TransactionLabels.StatusName(tx.Status),
+            ConfirmedCount = confirmations.Count,
+            RequiredCount = 2,
+            IsCompleted = isCompleted,
+            ItemCodeMatched = codeMatched,
+            ExpectedItemCode = expectedItem?.ItemCode,
+            Suggestion = suggestion
+        };
     }
 
     public async Task<TransactionDto> CancelAsync(
@@ -502,7 +811,6 @@ public class TransactionService : ITransactionService
         _itemRepo.Update(item);
         await _itemRepo.SaveChangesAsync(ct);
     }
-
     private async Task<TransactionDto> BuildDtoAsync(Guid id, Guid viewerId, CancellationToken ct)
     {
         var tx = await _txRepo.GetDetailAsync(id, ct)
@@ -534,7 +842,11 @@ public class TransactionService : ITransactionService
             CompletedAt = tx.CompletedAt,
             CancelledAt = tx.CancelledAt,
             CancelReason = tx.CancelReason,
-            CanManage = (tx.Status == (int)TransactionStatus.Pending)
+            // Chỉ được thao tác khi đơn còn ở trạng thái "đang xử lý".
+            // Với đơn Exchange đã có 1 bên xác nhận (AwaitingConfirmation) thì
+            // bên còn lại VẪN được bấm xác nhận — nên cần cho phép.
+            CanManage = (tx.Status == (int)TransactionStatus.Pending
+                        || tx.Status == (int)TransactionStatus.AwaitingConfirmation)
                         && (tx.InitiatorId == viewerId || tx.CounterpartyId == viewerId)
         };
     }

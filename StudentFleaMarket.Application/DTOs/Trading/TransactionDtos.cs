@@ -275,6 +275,7 @@ public static class TransactionLabels
         (int)TransactionStatus.Rejected => "Đã từ chối",
         (int)TransactionStatus.Cancelled => "Đã hủy giao dịch",
         (int)TransactionStatus.Completed => "Đã hoàn thành",
+        (int)TransactionStatus.AwaitingConfirmation => "Chờ xác nhận bàn giao",
         _ => "Không xác định"
     };
 

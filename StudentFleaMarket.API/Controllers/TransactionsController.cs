@@ -133,6 +133,44 @@ public class TransactionsController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Xác nhận bàn giao cho đơn ĐỔI ĐỒ.
+    ///
+    /// Đơn Exchange bắt buộc CẢ 2 bên xác nhận thì mới hoàn thành:
+    ///   - Bên thứ nhất xác nhận -> đơn sang "Chờ xác nhận bàn giao".
+    ///   - Bên thứ hai xác nhận -> đơn hoàn thành, mở khoá đánh giá 2 chiều.
+    ///
+    /// Body:
+    /// {
+    ///   "itemReceivedOk": true,
+    ///   "itemCodeVerified": "AB12CD34",
+    ///   "note": "Sách đúng mô tả, bìa còn tốt."
+    /// }
+    ///
+    /// `itemCodeVerified` là mã hàng (8 ký tự) in trên món đồ vừa nhận —
+    /// hệ thống đối chiếu với món đáng lẽ phải nhận để phát hiện hành vi
+    /// tráo hàng ngay tại chỗ.
+    /// </summary>
+    [HttpPost("{id:guid}/handover")]
+    public async Task<IActionResult> ConfirmHandover(
+        Guid id,
+        [FromBody] ConfirmHandoverDto? request,
+        CancellationToken ct)
+    {
+        var result = await _service.ConfirmHandoverAsync(GetUserId(), id, request, ct);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Trạng thái xác nhận bàn giao của đơn đổi đồ (bên nào đã xác nhận).
+    /// </summary>
+    [HttpGet("{id:guid}/handover")]
+    public async Task<IActionResult> GetHandover(Guid id, CancellationToken ct)
+    {
+        var result = await _service.GetHandoverStatusAsync(GetUserId(), id, ct);
+        return Ok(result);
+    }
+
     private Guid GetUserId()
     {
         var raw = User.FindFirstValue(ClaimTypes.NameIdentifier)
