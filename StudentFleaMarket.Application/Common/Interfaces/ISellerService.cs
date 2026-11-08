@@ -62,4 +62,18 @@ public interface ISellerService
     /// Admin / Moderator thu hồi quyền bán đã cấp (đưa về trạng thái chưa được cấp quyền).
     /// </summary>
     Task<AdminSellerRequestDto> RevokeAsync(Guid adminUserId, Guid targetUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// HỒ SƠ NĂNG LỰC BÁN HÀNG (public) — xem tín hiệu uy tín, điểm đánh giá,
+    /// số giao dịch hoàn thành và các đánh giá gần đây của một người bán.
+    ///
+    /// Endpoint: GET /api/Sellers/{sellerId}/profile
+    ///
+    /// Đây là nơi người MUA kiểm tra "người này có đáng tin không" trước khi
+    /// gặp mặt — vì vậy nó là endpoint công khai (không cần đăng nhập).
+    /// </summary>
+    Task<SellerProfileDto> GetSellerProfileAsync(
+        Guid sellerId,
+        Guid? viewerId,
+        CancellationToken ct = default);
 }

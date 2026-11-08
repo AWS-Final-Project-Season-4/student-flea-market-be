@@ -203,6 +203,11 @@ builder.Services.AddSwaggerGen(options =>
             "ExchangeRequestsController" => "8. Yêu cầu đổi đồ",
             "TransactionsController" => "9. Giao dịch & Thanh toán",
             "ChatController" => "10. Trò chuyện (Chat)",
+            "SellersController" => "11. Hồ sơ người bán & Uy tín",
+            "ReviewsController" => "12. Đánh giá uy tín (Reviews)",
+            "ReportsController" => "13. Báo cáo vi phạm (Reports)",
+            "AdminModerationController" => "14. Quản trị - Kiểm duyệt report",
+            "AdminCategoriesController" => "15. Quản trị - Quản lý danh mục",
             _ => controllerName ?? "Khác"
         };
 

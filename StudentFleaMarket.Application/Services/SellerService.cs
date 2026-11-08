@@ -4,6 +4,7 @@ using StudentFleaMarket.Application.Common.Exceptions;
 using StudentFleaMarket.Application.Common.Helpers;
 using StudentFleaMarket.Application.Common.Interfaces;
 using StudentFleaMarket.Application.DTOs.Seller;
+using StudentFleaMarket.Application.DTOs.Trust;
 using StudentFleaMarket.Domain.Entities;
 using StudentFleaMarket.Domain.Enums;
 
@@ -23,15 +24,21 @@ public class SellerService : ISellerService
 {
     private readonly IUserRepository _userRepo;
     private readonly IItemRepository _itemRepo;
+    private readonly ITrustService _trustService;
+    private readonly IReviewRepository _reviewRepo;
     private readonly IEmailSender _emailSender;
 
     public SellerService(
         IUserRepository userRepo,
         IItemRepository itemRepo,
+        ITrustService trustService,
+        IReviewRepository reviewRepo,
         IEmailSender emailSender)
     {
         _userRepo = userRepo;
         _itemRepo = itemRepo;
+        _trustService = trustService;
+        _reviewRepo = reviewRepo;
         _emailSender = emailSender;
     }
 
@@ -339,6 +346,71 @@ public class SellerService : ISellerService
             ct);
 
         return MapAdminRequest(target, itemCount);
+    }
+
+    // =====================================================================
+    // HỒ SƠ NĂNG LỰC BÁN HÀNG (public)
+    // =====================================================================
+
+    public async Task<SellerProfileDto> GetSellerProfileAsync(
+        Guid sellerId,
+        Guid? viewerId,
+        CancellationToken ct = default)
+    {
+        var seller = await _userRepo.GetByIdAsync(sellerId, ct)
+            ?? throw new NotFoundException("Không tìm thấy người dùng.", "USER_NOT_FOUND");
+
+        // Tài khoản dịch vụ AI không có hồ sơ bán hàng cho người dùng xem.
+        if (seller.Role == (int)UserRole.AiService)
+            throw new NotFoundException("Không tìm thấy người dùng.", "USER_NOT_FOUND");
+
+        // Tín hiệu uy tín (badge + điểm + số giao dịch + số vi phạm).
+        var trust = await _trustService.GetMetricsAsync(sellerId, ct);
+
+        // Số tin đăng đang bán.
+        var activeItemCount = await _itemRepo.CountBySellerAsync(sellerId, ct);
+
+        // Đánh giá gần đây (tối đa 10, chỉ đánh giá hợp lệ).
+        var (reviews, _) = await _reviewRepo.ListReceivedByUserAsync(
+            sellerId, 1, 10, includeVoided: false, ct);
+
+        var recentReviews = new List<ReviewDto>(reviews.Count);
+        var hasViewerReviewed = false;
+
+        foreach (var r in reviews)
+        {
+            if (viewerId.HasValue && r.ReviewerId == viewerId.Value)
+                hasViewerReviewed = true;
+
+            recentReviews.Add(new ReviewDto
+            {
+                Id = r.Id,
+                Rating = r.Rating,
+                Comment = r.Comment,
+                ReviewerName = r.Reviewer?.FullName ?? "Người dùng",
+                ReviewerAvatarUrl = r.Reviewer?.AvatarUrl,
+                ItemTitle = r.Transaction?.Item?.Title ?? "",
+                CreatedAt = r.CreatedAt,
+                UpdatedAt = r.UpdatedAt,
+                CanEdit = false
+            });
+        }
+
+        return new SellerProfileDto
+        {
+            Id = seller.Id,
+            FullName = seller.FullName,
+            AvatarUrl = seller.AvatarUrl,
+            SchoolName = seller.SchoolName,
+            StudentCode = seller.StudentCode,
+            CommonArea = seller.CommonArea,
+            MemberSince = seller.CreatedAt,
+            SellerApprovedAt = seller.SellerApprovedAt,
+            ActiveItemCount = activeItemCount,
+            Trust = trust,
+            RecentReviews = recentReviews,
+            HasViewerReviewed = hasViewerReviewed
+        };
     }
 
     // =====================================================================
