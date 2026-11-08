@@ -192,6 +192,11 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("BuyerId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("BuyerUnreadCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -207,13 +212,19 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("SellerId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("SellerUnreadCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.HasKey("Id");
 
-                    b.HasIndex("BuyerId");
+                    b.HasIndex("BuyerId", "LastMessageAt");
 
-                    b.HasIndex("ItemId");
+                    b.HasIndex("ItemId", "BuyerId")
+                        .IsUnique();
 
-                    b.HasIndex("SellerId");
+                    b.HasIndex("SellerId", "LastMessageAt");
 
                     b.ToTable("Conversations");
                 });
@@ -433,6 +444,9 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsRead")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("SenderId")
                         .HasColumnType("uuid");
 
@@ -441,9 +455,9 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ConversationId");
-
                     b.HasIndex("SenderId");
+
+                    b.HasIndex("ConversationId", "SentAt");
 
                     b.ToTable("Messages");
                 });

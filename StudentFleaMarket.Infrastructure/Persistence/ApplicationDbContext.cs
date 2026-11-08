@@ -306,6 +306,20 @@ public class AppDbContext: DbContext
         modelBuilder.Entity<Conversation>(entity =>
         {
             entity.HasKey(c => c.Id);
+
+            entity.Property(c => c.BuyerUnreadCount).HasDefaultValue(0);
+            entity.Property(c => c.SellerUnreadCount).HasDefaultValue(0);
+
+            // 1 món đồ + 1 người mua = DUY NHẤT 1 hội thoại.
+            // Bấm "Chat" nhiều lần không được tạo ra nhiều hội thoại (lịch sử
+            // bị vỡ + badge đếm sai). Đây cũng là điều kiện để logic
+            // "get-or-create" xác định được hội thoại của user.
+            entity.HasIndex(c => new { c.ItemId, c.BuyerId }).IsUnique();
+
+            // Sắp xếp danh sách hội thoại theo tin mới nhất.
+            entity.HasIndex(c => new { c.BuyerId, c.LastMessageAt });
+            entity.HasIndex(c => new { c.SellerId, c.LastMessageAt });
+
             entity.HasOne(c => c.Item)
                   .WithMany()
                   .HasForeignKey(c => c.ItemId)
@@ -321,10 +335,14 @@ public class AppDbContext: DbContext
         });
 
         //Message
-         modelBuilder.Entity<Message>(entity =>
+        modelBuilder.Entity<Message>(entity =>
         {
             entity.HasKey(m => m.Id);
             entity.Property(m => m.Content).IsRequired();
+
+            // Phân trang lịch sử chat theo thời gian.
+            entity.HasIndex(m => new { m.ConversationId, m.SentAt });
+
             entity.HasOne(m => m.Conversation)
                   .WithMany(c => c.Messages)
                   .HasForeignKey(m => m.ConversationId)
