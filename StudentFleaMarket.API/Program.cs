@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using StudentFleaMarket.API.Filters;
+using StudentFleaMarket.API.Hubs;
 using StudentFleaMarket.API.Middleware;
 using StudentFleaMarket.Application.Common;
 using StudentFleaMarket.Application.Common.Interfaces;
@@ -76,6 +77,24 @@ builder.Services
         // Áp dụng cho mọi endpoint [Authorize] (kể cả Profile).
         options.Events = new JwtBearerEvents
         {
+            OnMessageReceived = async context =>
+            {
+                // ----- WebSocket của SignalR -----
+                // Browser KHÔNG set được header "Authorization" khi mở
+                // WebSocket (JS SignalR client cũng không cho gán header tùy ý).
+                // Chuẩn của SignalR là truyền token qua query string:
+                //     /hubs/chat?access_token=<jwt>
+                // Đọc ở đây để pipeline xác thực JWT hoạt động cho cả WebSocket
+                // lẫn Long Polling.
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(accessToken)
+                    && string.IsNullOrEmpty(context.Token))
+                {
+                    context.Token = accessToken;
+                }
+
+                await Task.CompletedTask;
+            },
             OnAuthenticationFailed = context =>
             {
                 // Ghi log lý do từ chối token để dễ chẩn đoán (401 do dán sai token).
@@ -149,6 +168,15 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+// ------------------------------------------------------------------ SignalR
+// Realtime cho chức năng trò chuyện (chat 1-1 theo món đồ).
+// SignalR nằm sẵn trong shared framework của .NET 8 -> không cần thêm package.
+builder.Services.AddSignalR(options =>
+{
+    // Cho phép client gửi message lớn hơn mặc định (mặc định 32KB).
+    options.MaximumReceiveMessageSize = 64 * 1024;
+});
+
 // -------------------------------------------------------------- MVC + Swagger
 builder.Services.AddScoped<ValidationFilter>();
 builder.Services.AddControllers(options => options.Filters.AddService<ValidationFilter>());
@@ -171,6 +199,15 @@ builder.Services.AddSwaggerGen(options =>
             "SellerController" => "4. Seller",
             "AdminSellerController" => "5. Admin - Approve Seller",
             "AdminUsersController" => "6. Admin - Manage and Ban Account",
+            "AdminModeratorsController" => "7. Admin - Moderators",
+            "ExchangeRequestsController" => "8. Exchange Requests",
+            "TransactionsController" => "9. Transactions & Payments",
+            "ChatController" => "10. Chat",
+            "SellersController" => "11. Seller Profiles & Trust",
+            "ReviewsController" => "12. Reviews",
+            "ReportsController" => "13. Reports",
+            "AdminModerationController" => "14. Admin - Report Moderation",
+            "AdminCategoriesController" => "15. Admin - Categories",
             _ => controllerName ?? "Others"
         };
 
@@ -254,10 +291,51 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
+// --------------------------------------------------- SignalR — Chat realtime
+// Endpoint: /hubs/chat?access_token=<jwt>
+// (Browser không gửi được header Authorization khi mở WebSocket, nên token
+//  được truyền qua query string — JwtBearerEvents.OnMessageReceived đọc
+//  query này để xác thực.)
+app.MapHub<ChatHub>("/hubs/chat");
+
 // -------------------------------------------------- Seed dữ liệu khởi tạo
 // (tài khoản Admin mặc định + danh mục). Idempotent — chạy lại không ghi đè.
 if (!builder.Configuration.GetValue<bool>("SkipDatabaseSeed"))
 {
+    // ------------------------------------------- Áp dụng migration tự động
+    // Bắt buộc phải chạy TRƯỚC mọi thao tác trên DB. Nếu không, các entity
+    // mới (ExchangeRequest, Transaction, Payment) sẽ INSERT vào bảng thiếu
+    // cột -> Postgres trả 42703 "column ... does not exist" -> HTTP 500.
+    //
+    // Lưu ý: `dotnet ef database update` KHÔNG đọc được user-secrets nên
+    // không chạy được ngoài app; áp dụng tại đây dùng đúng connection
+    // string mà app đã nạp thành công.
+    //
+    // InMemory provider không hỗ trợ migration (và không cần — schema được
+    // tạo tự động theo model) nên bỏ qua.
+    if (!builder.Configuration.GetValue<bool>("UseInMemoryDatabase"))
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
+
+            if (pending.Count > 0)
+            {
+                app.Logger.LogInformation("Đang áp dụng {Count} migration chưa apply: {Migrations}",
+                    pending.Count, string.Join(", ", pending));
+                await db.Database.MigrateAsync();
+                app.Logger.LogInformation("Đã áp dụng migration thành công.");
+            }
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogError(ex, "Không áp dụng được migration. Hãy kiểm tra kết nối DB / chạy `dotnet ef database update`.");
+            throw;
+        }
+    }
+
     try
     {
         await DatabaseSeeder.SeedAsync(app.Services);
@@ -269,7 +347,8 @@ if (!builder.Configuration.GetValue<bool>("SkipDatabaseSeed"))
     }
 
     // ------------------------------------------- Backfill cột dẫn xuất (luôn chạy)
-    // Ví dụ: Items.TitleNormalized (bản bỏ dấu của Title) cho dữ liệu đã có sẵn.
+    // Ví dụ: Items.TitleNormalized (bản bỏ dấu của Title), Items.ItemCode
+    // (mã hàng 8 ký tự) cho dữ liệu đã có sẵn.
     try
     {
         using var scope = app.Services.CreateScope();

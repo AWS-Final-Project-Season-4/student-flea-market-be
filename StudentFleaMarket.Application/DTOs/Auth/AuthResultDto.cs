@@ -15,9 +15,25 @@ public class UserDto
     public int Role { get; set; }
 
     /// <summary>
-    /// Tên vai trò: "User", "Admin" hoặc "AiService".
+    /// Tên vai trò: "User", "Admin", "AiService" hoặc "Moderator".
     /// </summary>
     public string RoleName { get; set; } = "User";
+
+    /// <summary>
+    /// Tài khoản này đang là quản trị viên hay không.
+    /// </summary>
+    public bool IsAdmin { get; set; }
+
+    /// <summary>
+    /// Tài khoản này đang là kiểm duyệt viên hay không.
+    /// </summary>
+    public bool IsModerator { get; set; }
+
+    /// <summary>
+    /// Tài khoản này là nhân viên (Admin hoặc Moderator) hay không.
+    /// Frontend dùng cờ này để bật menu quản trị.
+    /// </summary>
+    public bool IsStaff { get; set; }
 
     public int Status { get; set; }
     public bool IsEmailVerified { get; set; }

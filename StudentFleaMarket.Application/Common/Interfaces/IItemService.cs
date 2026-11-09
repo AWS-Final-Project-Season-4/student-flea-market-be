@@ -19,9 +19,11 @@ public interface IItemService
     Task<ItemDetailDto> UpdateAsync(Guid userId, Guid itemId, UpdateItemRequestDto request, CancellationToken ct = default);
 
     /// <summary>
-    /// Xóa tin đăng (soft delete). Chỉ chủ tin hoặc Admin được xóa.
+    /// Xóa tin đăng (soft delete). Chỉ chủ tin, Admin hoặc Moderator được xóa.
+    /// <paramref name="isStaff"/> = người gọi là nhân viên (Admin/Moderator) thì
+    /// được gỡ tin của người khác (dùng để gỡ tin vi phạm).
     /// </summary>
-    Task<ApiResponse<object>> DeleteAsync(Guid userId, bool isAdmin, Guid itemId, CancellationToken ct = default);
+    Task<ApiResponse<object>> DeleteAsync(Guid userId, bool isStaff, Guid itemId, CancellationToken ct = default);
 
     /// <summary>
     /// Lấy chi tiết tin đăng. userId = null nghĩa là khách vãng lai.
@@ -32,6 +34,11 @@ public interface IItemService
     /// Lấy chi tiết tin đăng theo slug.
     /// </summary>
     Task<ItemDetailDto> GetBySlugAsync(string slug, Guid? userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lấy chi tiết tin đăng theo mã hàng (<c>ItemCode</c>) — mà người dùng nhập tay.
+    /// </summary>
+    Task<ItemDetailDto> GetByCodeAsync(string code, Guid? userId, CancellationToken ct = default);
 
     /// <summary>
     /// Tìm kiếm & lọc nâng cao.

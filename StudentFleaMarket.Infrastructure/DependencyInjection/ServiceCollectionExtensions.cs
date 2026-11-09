@@ -21,12 +21,31 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFavoriteService, FavoriteService>();
         services.AddScoped<ISellerService, SellerService>();
         services.AddScoped<IAdminUserService, AdminUserService>();
+        services.AddScoped<IModeratorService, ModeratorService>();
+        services.AddScoped<IExchangeRequestService, ExchangeRequestService>();
+        services.AddScoped<ITransactionService, TransactionService>();
+        services.AddScoped<IChatService, ChatService>();
+
+        // ---------------------------------------- TRUST & MODERATION (Feature 5)
+        services.AddScoped<ITrustService, TrustService>();
+        services.AddScoped<IReviewService, ReviewService>();
+        services.AddScoped<IReportService, ReportService>();
+        services.AddScoped<IModerationService, ModerationService>();
+        services.AddScoped<ICategoryManagementService, CategoryManagementService>();
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IServiceAccountRepository, ServiceAccountRepository>();
         services.AddScoped<IItemRepository, ItemRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
         services.AddScoped<IFavoriteRepository, FavoriteRepository>();
+        services.AddScoped<IExchangeRequestRepository, ExchangeRequestRepository>();
+        services.AddScoped<ITransactionRepository, TransactionRepository>();
+        services.AddScoped<IPaymentRepository, PaymentRepository>();
+        services.AddScoped<ITransactionConfirmationRepository, TransactionConfirmationRepository>();
+        services.AddScoped<IChatRepository, ChatRepository>();
+        services.AddScoped<IMessageRepository, MessageRepository>();
+        services.AddScoped<IReviewRepository, ReviewRepository>();
+        services.AddScoped<IReportRepository, ReportRepository>();
         services.AddScoped<IRepository<ApplicationUser>, EfRepository<ApplicationUser>>();
         services.AddScoped<IRepository<RefreshToken>, EfRepository<RefreshToken>>();
         services.AddScoped<IRepository<VerificationCode>, EfRepository<VerificationCode>>();

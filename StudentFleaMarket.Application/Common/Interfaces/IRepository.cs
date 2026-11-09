@@ -76,6 +76,15 @@ public interface IUserRepository : IRepository<ApplicationUser>
         CancellationToken ct = default);
 
     /// <summary>
+    /// Lấy danh sách tài khoản đang là kiểm duyệt viên (Moderator),
+    /// phân trang ở tầng DB. Dùng cho màn hình quản lý kiểm duyệt viên của Admin.
+    /// </summary>
+    Task<(List<ApplicationUser> Users, int TotalCount)> ListModeratorsAsync(
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Lấy nhanh trạng thái tài khoản (không load toàn bộ entity).
     /// Dùng bởi middleware để chặn tài khoản bị cấm ngay khi còn access token hợp lệ.
     /// Trả về null nếu không tìm thấy tài khoản.

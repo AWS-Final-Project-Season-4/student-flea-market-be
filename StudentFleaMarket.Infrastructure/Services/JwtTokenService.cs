@@ -5,7 +5,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using StudentFleaMarket.Application.Common.Interfaces;
-using StudentFleaMarket.Domain.Enums;
+using StudentFleaMarket.Domain.Common;
 
 namespace StudentFleaMarket.Infrastructure.Services;
 
@@ -25,12 +25,7 @@ public class JwtTokenService : IJwtTokenService
         var accessExpires = now.AddMinutes(_options.AccessTokenMinutes);
         var refreshExpires = now.AddDays(_options.RefreshTokenDays);
 
-        var roleName = role switch
-        {
-            (int)UserRole.Admin => "Admin",
-            (int)UserRole.AiService => "AiService",
-            _ => "User"
-        };
+        var roleName = RoleNames.Of(role);
 
         var claims = new List<Claim>
         {

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StudentFleaMarket.Application.Common.Interfaces;
 using StudentFleaMarket.Application.DTOs.Items;
+using StudentFleaMarket.Domain.Common;
 
 namespace StudentFleaMarket.API.Controllers;
 
@@ -13,7 +14,7 @@ namespace StudentFleaMarket.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/Items/sell")]
-[Authorize(Roles = "User, Admin")]
+[Authorize(Roles = "User, Admin, Moderator")]
 [Produces("application/json")]
 public class ItemsForSaleController : ControllerBase
 {
@@ -49,13 +50,14 @@ public class ItemsForSaleController : ControllerBase
     }
 
     /// <summary>
-    /// Gỡ tin đăng (soft delete). Chủ tin hoặc Admin được quyền.
+    /// Gỡ tin đăng (soft delete). Chủ tin, Admin hoặc Moderator được quyền.
     /// </summary>
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
-        var isAdmin = User.IsInRole("Admin");
-        var result = await _itemService.DeleteAsync(GetUserId(), isAdmin, id, ct);
+        // Nhân viên (Admin / Moderator) được gỡ tin vi phạm của người khác.
+        var isStaff = User.IsInRole(RoleNames.Admin) || User.IsInRole(RoleNames.Moderator);
+        var result = await _itemService.DeleteAsync(GetUserId(), isStaff, id, ct);
         return Ok(result);
     }
 

@@ -6,6 +6,7 @@ using StudentFleaMarket.Application.Common.Helpers;
 using StudentFleaMarket.Application.Common.Interfaces;
 using StudentFleaMarket.Application.DTOs.Auth;
 using StudentFleaMarket.Domain.Entities;
+using StudentFleaMarket.Domain.Common;
 using StudentFleaMarket.Domain.Enums;
 
 namespace StudentFleaMarket.Application.Services;
@@ -352,6 +353,9 @@ public class AuthService : IAuthService
         Dormitory = user.Dormitory,
         Role = user.Role,
         RoleName = RoleNameOf(user.Role),
+        IsAdmin = user.Role == (int)UserRole.Admin,
+        IsModerator = user.Role == (int)UserRole.Moderator,
+        IsStaff = StaffPermission.IsStaff(user),
         Status = user.Status,
         IsEmailVerified = user.IsEmailVerified,
         CreatedAt = user.CreatedAt,
@@ -367,13 +371,9 @@ public class AuthService : IAuthService
 
     /// <summary>
     /// Tên vai trò tương ứng với mã số.
+    /// Nguồn sự thật duy nhất: <see cref="RoleNames"/> (Domain).
     /// </summary>
-    public static string RoleNameOf(int role) => role switch
-    {
-        (int)UserRole.Admin => "Admin",
-        (int)UserRole.AiService => "AiService",
-        _ => "User"
-    };
+    public static string RoleNameOf(int role) => RoleNames.Of(role);
 
     /// <summary>
     /// Chuẩn hoá username: trim + lowercase. Trả null nếu không được nhập.

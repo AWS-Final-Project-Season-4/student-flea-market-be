@@ -3,6 +3,7 @@ using System.Text.Json;
 using StudentFleaMarket.Application.Common;
 using StudentFleaMarket.Application.Common.Interfaces;
 using StudentFleaMarket.Application.Services;
+using StudentFleaMarket.Domain.Common;
 using StudentFleaMarket.Domain.Entities;
 
 namespace StudentFleaMarket.API.Middleware;
@@ -54,7 +55,7 @@ public class ServiceAccountApiKeyMiddleware
         {
             new(ClaimTypes.NameIdentifier, account.Id.ToString()),
             new(ClaimTypes.Name, account.Name),
-            new(ClaimTypes.Role, "AiService"),
+            new(ClaimTypes.Role, RoleNames.AiService),
             new("role", account.Role.ToString()),
             new("service_account_id", account.Id.ToString())
         };

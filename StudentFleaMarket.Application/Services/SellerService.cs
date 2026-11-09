@@ -4,6 +4,7 @@ using StudentFleaMarket.Application.Common.Exceptions;
 using StudentFleaMarket.Application.Common.Helpers;
 using StudentFleaMarket.Application.Common.Interfaces;
 using StudentFleaMarket.Application.DTOs.Seller;
+using StudentFleaMarket.Application.DTOs.Trust;
 using StudentFleaMarket.Domain.Entities;
 using StudentFleaMarket.Domain.Enums;
 
@@ -15,20 +16,29 @@ namespace StudentFleaMarket.Application.Services;
 /// Người bán vẫn giữ UserRole = User, nên mọi quyền mua / yêu thích /
 /// xem hồ sơ của user thường vẫn hoạt động bình thường.
 /// Chỉ chức năng ĐĂNG TIN BÁN mới bị khoá cho tới khi Admin duyệt.
+///
+/// Admin và Moderator (kiểm duyệt viên) đều có sẵn quyền đăng tin và đều
+/// duyệt / từ chối / thu hồi quyền bán được.
 /// </summary>
 public class SellerService : ISellerService
 {
     private readonly IUserRepository _userRepo;
     private readonly IItemRepository _itemRepo;
+    private readonly ITrustService _trustService;
+    private readonly IReviewRepository _reviewRepo;
     private readonly IEmailSender _emailSender;
 
     public SellerService(
         IUserRepository userRepo,
         IItemRepository itemRepo,
+        ITrustService trustService,
+        IReviewRepository reviewRepo,
         IEmailSender emailSender)
     {
         _userRepo = userRepo;
         _itemRepo = itemRepo;
+        _trustService = trustService;
+        _reviewRepo = reviewRepo;
         _emailSender = emailSender;
     }
 
@@ -49,10 +59,12 @@ public class SellerService : ISellerService
     {
         var user = await GetUserAsync(userId, ct);
 
-        // Admin không cần xin quyền bán — đã có sẵn toàn bộ quyền.
-        if (user.Role == (int)UserRole.Admin)
+        // Admin / Moderator không cần xin quyền bán — đã có sẵn toàn bộ quyền.
+        if (StaffPermission.IsStaff(user))
             throw new ValidationException(
-                "Tài khoản quản trị viên đã có đầy đủ quyền đăng bán.",
+                StaffPermission.IsAdmin(user)
+                    ? "Tài khoản quản trị viên đã có đầy đủ quyền đăng bán."
+                    : "Tài khoản kiểm duyệt viên đã có đầy đủ quyền đăng bán.",
                 "ADMIN_ALREADY_CAN_SELL");
 
         switch ((SellerStatus)user.SellerStatus)
@@ -146,6 +158,10 @@ public class SellerService : ISellerService
         Guid targetUserId,
         CancellationToken ct = default)
     {
+        // Người thực hiện phải là nhân viên (Admin hoặc Moderator).
+        var actor = await GetUserAsync(adminUserId, ct);
+        EnsureCanManageSeller(actor);
+
         var target = await GetUserAsync(targetUserId, ct);
 
         if ((SellerStatus)target.SellerStatus == SellerStatus.Approved)
@@ -157,6 +173,12 @@ public class SellerService : ISellerService
             throw new ValidationException(
                 "Tài khoản quản trị viên không cần cấp quyền bán.",
                 "ADMIN_ALREADY_CAN_SELL");
+
+        // Moderator đã có sẵn quyền bán (xem SellerPermission) -> không cần cấp.
+        if (target.Role == (int)UserRole.Moderator)
+            throw new ValidationException(
+                "Tài khoản kiểm duyệt viên đã có sẵn quyền đăng bán.",
+                "MODERATOR_ALREADY_CAN_SELL");
 
         // Tài khoản đang bị cấm thì không cấp quyền bán được — tránh tạo ra
         // tài khoản "được duyệt bán" nhưng không thể dùng do đã bị khoá.
@@ -181,7 +203,7 @@ public class SellerService : ISellerService
             target.FullName,
             "Yêu cầu trở thành người bán đã được duyệt",
             $@"<p>Chào <b>{System.Net.WebUtility.HtmlEncode(target.FullName)}</b>,</p>
-                <p>Yêu cầu trở thành người bán của bạn đã được <b>Admin duyệt</b>.</p>
+                <p>Yêu cầu trở thành người bán của bạn đã được <b>duyệt</b>.</p>
                 <p>Bạn đã có thể đăng tin bán đồ cũ trên Campus Thrift &amp; Exchange Hub.</p>",
             ct);
 
@@ -194,12 +216,21 @@ public class SellerService : ISellerService
         string? reason,
         CancellationToken ct = default)
     {
+        var actor = await GetUserAsync(adminUserId, ct);
+        EnsureCanManageSeller(actor);
+
         var target = await GetUserAsync(targetUserId, ct);
 
         if (target.Role == (int)UserRole.Admin)
             throw new ValidationException(
                 "Không thể từ chối quyền bán của tài khoản quản trị viên.",
                 "ADMIN_CANNOT_REJECT");
+
+        // Moderator luôn có quyền bán -> không có "yêu cầu" để từ chối.
+        if (target.Role == (int)UserRole.Moderator)
+            throw new ValidationException(
+                "Không thể từ chối quyền bán của tài khoản kiểm duyệt viên.",
+                "MODERATOR_CANNOT_REJECT");
 
         if ((SellerStatus)target.SellerStatus == SellerStatus.Rejected)
             throw new ConflictException(
@@ -262,12 +293,21 @@ public class SellerService : ISellerService
         Guid targetUserId,
         CancellationToken ct = default)
     {
+        var actor = await GetUserAsync(adminUserId, ct);
+        EnsureCanManageSeller(actor);
+
         var target = await GetUserAsync(targetUserId, ct);
 
         if (target.Role == (int)UserRole.Admin)
             throw new ValidationException(
                 "Không thể thu hồi quyền bán của tài khoản quản trị viên.",
                 "ADMIN_CANNOT_REVOKE");
+
+        // Moderator luôn có quyền bán -> không có quyền bán để thu hồi.
+        if (target.Role == (int)UserRole.Moderator)
+            throw new ValidationException(
+                "Không thể thu hồi quyền bán của tài khoản kiểm duyệt viên.",
+                "MODERATOR_CANNOT_REVOKE");
 
         if ((SellerStatus)target.SellerStatus != SellerStatus.Approved)
             throw new ValidationException(
@@ -309,6 +349,71 @@ public class SellerService : ISellerService
     }
 
     // =====================================================================
+    // HỒ SƠ NĂNG LỰC BÁN HÀNG (public)
+    // =====================================================================
+
+    public async Task<SellerProfileDto> GetSellerProfileAsync(
+        Guid sellerId,
+        Guid? viewerId,
+        CancellationToken ct = default)
+    {
+        var seller = await _userRepo.GetByIdAsync(sellerId, ct)
+            ?? throw new NotFoundException("Không tìm thấy người dùng.", "USER_NOT_FOUND");
+
+        // Tài khoản dịch vụ AI không có hồ sơ bán hàng cho người dùng xem.
+        if (seller.Role == (int)UserRole.AiService)
+            throw new NotFoundException("Không tìm thấy người dùng.", "USER_NOT_FOUND");
+
+        // Tín hiệu uy tín (badge + điểm + số giao dịch + số vi phạm).
+        var trust = await _trustService.GetMetricsAsync(sellerId, ct);
+
+        // Số tin đăng đang bán.
+        var activeItemCount = await _itemRepo.CountBySellerAsync(sellerId, ct);
+
+        // Đánh giá gần đây (tối đa 10, chỉ đánh giá hợp lệ).
+        var (reviews, _) = await _reviewRepo.ListReceivedByUserAsync(
+            sellerId, 1, 10, includeVoided: false, ct);
+
+        var recentReviews = new List<ReviewDto>(reviews.Count);
+        var hasViewerReviewed = false;
+
+        foreach (var r in reviews)
+        {
+            if (viewerId.HasValue && r.ReviewerId == viewerId.Value)
+                hasViewerReviewed = true;
+
+            recentReviews.Add(new ReviewDto
+            {
+                Id = r.Id,
+                Rating = r.Rating,
+                Comment = r.Comment,
+                ReviewerName = r.Reviewer?.FullName ?? "Người dùng",
+                ReviewerAvatarUrl = r.Reviewer?.AvatarUrl,
+                ItemTitle = r.Transaction?.Item?.Title ?? "",
+                CreatedAt = r.CreatedAt,
+                UpdatedAt = r.UpdatedAt,
+                CanEdit = false
+            });
+        }
+
+        return new SellerProfileDto
+        {
+            Id = seller.Id,
+            FullName = seller.FullName,
+            AvatarUrl = seller.AvatarUrl,
+            SchoolName = seller.SchoolName,
+            StudentCode = seller.StudentCode,
+            CommonArea = seller.CommonArea,
+            MemberSince = seller.CreatedAt,
+            SellerApprovedAt = seller.SellerApprovedAt,
+            ActiveItemCount = activeItemCount,
+            Trust = trust,
+            RecentReviews = recentReviews,
+            HasViewerReviewed = hasViewerReviewed
+        };
+    }
+
+    // =====================================================================
     // HELPERS
     // =====================================================================
 
@@ -316,6 +421,21 @@ public class SellerService : ISellerService
     {
         return await _userRepo.GetByIdAsync(userId, ct)
             ?? throw new NotFoundException("Không tìm thấy người dùng.", "USER_NOT_FOUND");
+    }
+
+    /// <summary>
+    /// Kiểm tra người thực hiện có quyền duyệt / từ chối / thu hồi quyền bán không.
+    /// Admin và Moderator đều được (Moderator chia sẻ công việc khi Admin bận).
+    ///
+    /// Lưu ý: ngoài lớp [Authorize(Roles = ...)] ở API, tầng service vẫn phải
+    /// tự kiểm tra — đây là lớp phòng thủ cuối cùng cho logic nghiệp vụ.
+    /// </summary>
+    private static void EnsureCanManageSeller(ApplicationUser actor)
+    {
+        if (!StaffPermission.CanApproveSeller(actor))
+            throw new ForbiddenException(
+                "Bạn không có quyền duyệt quyền bán.",
+                "FORBIDDEN");
     }
 
     private static SellerStatusDto MapStatus(ApplicationUser user) => new()
@@ -373,7 +493,8 @@ public class SellerService : ISellerService
     }
 
     /// <summary>
-    /// Gửi mail cho tất cả Admin để họ biết có yêu cầu mới.
+    /// Gửi mail cho tất cả nhân viên (Admin + Moderator) để họ biết có yêu cầu mới.
+    /// Moderator duyệt bán được (chia sẻ công việc với Admin khi Admin bận).
     /// Không để lỗi gửi mail làm hỏng luồng nghiệp vụ.
     /// </summary>
     private async Task NotifyAdminsAsync(
@@ -382,11 +503,12 @@ public class SellerService : ISellerService
         string body,
         CancellationToken ct)
     {
-        var admins = await _userRepo.ListAsync(u => u.Role == (int)UserRole.Admin, ct);
+        var staff = await _userRepo.ListAsync(
+            u => u.Role == (int)UserRole.Admin || u.Role == (int)UserRole.Moderator, ct);
 
-        foreach (var admin in admins)
+        foreach (var member in staff)
         {
-            await SendMailSafeAsync(admin.Email, admin.FullName, subject, body, ct);
+            await SendMailSafeAsync(member.Email, member.FullName, subject, body, ct);
         }
     }
 

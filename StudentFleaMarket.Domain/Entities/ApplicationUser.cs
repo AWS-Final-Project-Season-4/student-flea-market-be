@@ -43,7 +43,8 @@ public class ApplicationUser
     public string? Dormitory { get; set; }
 
     /// <summary>
-    /// UserRole: 0 = User, 1 = Admin, 2 = AiService
+    /// UserRole: 0 = User, 1 = Admin, 2 = AiService, 3 = Moderator.
+    /// Xem <see cref="Enums.UserRole"/> và <see cref="Common.RoleNames"/>.
     /// </summary>
     public int Role { get; set; } = (int)UserRole.User;
 
@@ -107,6 +108,26 @@ public class ApplicationUser
     /// </summary>
     public Guid? BannedByUserId { get; set; }
 
+    // -------------------------------------------------- ROLE (Admin cấp quyền kiểm duyệt)
+    // Theo dõi việc Admin nâng cấp / hạ cấp một tài khoản thường thành
+    // Moderator (kiểm duyệt viên) — để truy vết "ai cấp quyền, lúc nào".
+    // Không có cột này thì không trả lời được khiếu nại về quyền kiểm duyệt.
+
+    /// <summary>
+    /// Admin đã cấp role kiểm duyệt viên cho tài khoản này (nếu có).
+    /// </summary>
+    public Guid? RoleGrantedByUserId { get; set; }
+
+    /// <summary>
+    /// Thời điểm được cấp role kiểm duyệt viên.
+    /// </summary>
+    public DateTime? RoleGrantedAt { get; set; }
+
+    /// <summary>
+    /// Thời điểm bị thu hồi role kiểm duyệt viên (nếu đã bị thu hồi).
+    /// </summary>
+    public DateTime? RoleRevokedAt { get; set; }
+
     /// <summary>
     /// Thời điểm bị cấm.
     /// </summary>
@@ -127,6 +148,22 @@ public class ApplicationUser
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
     public ICollection<VerificationCode> VerificationCodes { get; set; } = new List<VerificationCode>();
 
+    // -------------------------------------------- TRUST & MODERATION
+    // Đánh giá mà tài khoản này viết (người mua đánh giá người bán).
+    public ICollection<Review> ReviewsWritten { get; set; } = new List<Review>();
+
+    // Đánh giá mà tài khoản này nhận được (tính vào điểm uy tín).
+    public ICollection<Review> ReviewsReceived { get; set; } = new List<Review>();
+
+    // Report do tài khoản này gửi lên.
+    public ICollection<Report> ReportsSubmitted { get; set; } = new List<Report>();
+
+    // Report nhắm vào tài khoản này.
+    public ICollection<Report> ReportsAgainst { get; set; } = new List<Report>();
+
+    // Xác nhận bàn giao (đơn đổi đồ).
+    public ICollection<TransactionConfirmation> TransactionConfirmations { get; set; } = new List<TransactionConfirmation>();
+
     /// <summary>
     /// Admin đã cấp quyền bán cho tài khoản này (nếu có).
     /// </summary>
@@ -136,4 +173,9 @@ public class ApplicationUser
     /// Admin đã cấm tài khoản này (nếu có).
     /// </summary>
     public ApplicationUser? BannedBy { get; set; }
+
+    /// <summary>
+    /// Admin đã cấp role kiểm duyệt viên cho tài khoản này (nếu có).
+    /// </summary>
+    public ApplicationUser? RoleGrantedBy { get; set; }
 }

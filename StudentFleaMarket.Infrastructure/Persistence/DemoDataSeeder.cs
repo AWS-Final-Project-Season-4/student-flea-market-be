@@ -26,6 +26,7 @@ public static class DemoDataSeeder
         var (users, items) = await SeedUsersAsync(db, ct);
         await SeedItemsAsync(db, users, items, ct);
         await SeedFavoritesAsync(db, users, items, ct);
+        await SeedTradingAsync(db, users, ct);
     }
 
     // ------------------------------------------------------------- USERS
@@ -166,6 +167,24 @@ public static class DemoDataSeeder
         var now = DateTime.UtcNow;
         var items = new List<Item>();
 
+        // Mã hàng phải DUY NHẤT trong toàn bộ DB -> giữ set để tránh trùng.
+        var usedCodes = new HashSet<string>(
+            await db.Items.IgnoreQueryFilters()
+                .Where(i => i.ItemCode != null && i.ItemCode != "")
+                .Select(i => i.ItemCode)
+                .ToListAsync(ct),
+            StringComparer.OrdinalIgnoreCase);
+
+        string NextCode()
+        {
+            var code = ItemCodeHelper.Generate();
+            while (usedCodes.Contains(code))
+                code = ItemCodeHelper.Generate();
+
+            usedCodes.Add(code);
+            return code;
+        }
+
         foreach (var s in specs)
         {
             if (!users.TryGetValue(s.Seller, out var seller)) continue;
@@ -179,6 +198,8 @@ public static class DemoDataSeeder
                 Title = s.Title,
                 Slug = SlugHelper.GenerateUnique(s.Title),
                 TitleNormalized = SlugHelper.NormalizeForSearch(s.Title),
+                // Mã hàng cho người dùng — sinh tự động, duy nhất toàn hệ thống.
+                ItemCode = NextCode(),
                 Description = BuildDescription(s.Title, s.Cond, s.Loc),
                 Price = s.Price,
                 Condition = s.Cond,
@@ -264,6 +285,103 @@ public static class DemoDataSeeder
 
         db.Favorites.AddRange(distinct);
         await db.SaveChangesAsync(ct);
+    }
+
+    // ------------------------------------------------------------- TRADING
+    /// <summary>
+    /// Seed dữ liệu giao dịch & yêu cầu đổi đồ để test nhanh:
+    ///   - 1 yêu cầu đổi đồ đang chờ (minh -> linh) để test accept / reject.
+    ///   - 1 yêu cầu đổi đồ đã được chấp nhận để test tạo đơn Exchange.
+    ///   - 1 đơn mua trực tiếp đang xử lý (tu -> minh) để test complete / cancel.
+    ///
+    /// Idempotent — nếu đã có dữ liệu giao dịch thì bỏ qua.
+    /// </summary>
+    private static async Task SeedTradingAsync(
+        AppDbContext db,
+        Dictionary<string, ApplicationUser> users,
+        CancellationToken ct)
+    {
+        if (await db.ExchangeRequests.IgnoreQueryFilters().AnyAsync(ct)
+            || await db.Transactions.IgnoreQueryFilters().AnyAsync(ct))
+            return;
+
+        if (users.Count < 3)
+            return;
+
+        var items = await db.Items.IgnoreQueryFilters()
+            .Where(i => !i.IsDeleted && i.Status == (int)ItemStatus.Available)
+            .ToListAsync(ct);
+
+        if (items.Count == 0)
+            return;
+
+        // Chọn món đồ "được nhận" (bật cho phép đổi đồ) và món đồ "đem đổi".
+        var exchangeable = items.Where(i => i.IsExchangeEnabled).ToList();
+        if (exchangeable.Count == 0)
+            return;
+
+        var requestedItem = exchangeable[0];
+        var offeredItem = items.FirstOrDefault(i => i.Id != requestedItem.Id
+                                                  && i.SellerId != requestedItem.SellerId);
+        if (offeredItem is null)
+            return;
+
+        var now = DateTime.UtcNow;
+
+        // ---------- Yêu cầu đổi đồ đang chờ ----------
+        var pending = new ExchangeRequest
+        {
+            Id = Guid.NewGuid(),
+            RequesterId = offeredItem.SellerId,
+            RequestedItemId = requestedItem.Id,
+            OfferedItemId = offeredItem.Id,
+            AdditionalAmount = 50000,
+            Note = "Tôi có thể giao dịch lúc 17h ở KTX. Sản phẩm còn như mới.",
+            Status = (int)ExchangeRequestStatus.Pending,
+            CreatedAt = now.AddHours(-5)
+        };
+
+        db.ExchangeRequests.Add(pending);
+        await db.SaveChangesAsync(ct);
+
+        // ---------- Đơn mua trực tiếp đang xử lý ----------
+        // Chọn 2 món đồ của 2 user khác nhau để tạo đơn hợp lệ.
+        var buyer = items.FirstOrDefault(i => i.SellerId != users["minh"].Id && i.Price > 0);
+        var sellerItem = items.FirstOrDefault(i => i.SellerId == users["minh"].Id && i.Price > 0);
+
+        if (buyer is not null && sellerItem is not null)
+        {
+            var transaction = new Transaction
+            {
+                Id = Guid.NewGuid(),
+                InitiatorId = buyer.SellerId,
+                CounterpartyId = sellerItem.SellerId,
+                ItemId = sellerItem.Id,
+                ExchangeRequestId = null,
+                Type = (int)TransactionType.Purchase,
+                Amount = sellerItem.Price,
+                Status = (int)TransactionStatus.Pending,
+                MeetingLocation = sellerItem.Location,
+                CreatedAt = now.AddHours(-3)
+            };
+
+            db.Transactions.Add(transaction);
+            await db.SaveChangesAsync(ct);
+
+            db.Payments.Add(new Payment
+            {
+                Id = Guid.NewGuid(),
+                TransactionId = transaction.Id,
+                PayerId = buyer.SellerId,
+                Amount = sellerItem.Price,
+                Method = (int)PaymentMethod.Cod,
+                Status = (int)PaymentStatus.Pending,
+                TransactionRef = $"SFM-{transaction.Id.ToString("N")[..10].ToUpperInvariant()}",
+                CreatedAt = now.AddHours(-3)
+            });
+
+            await db.SaveChangesAsync(ct);
+        }
     }
 
     private static string BuildDescription(string title, int condition, string location)

@@ -34,6 +34,16 @@ public class ItemService : IItemService
         var category = await _categoryRepo.GetByIdAsync(request.CategoryId, ct)
             ?? throw new NotFoundException("Danh mục không tồn tại.", "CATEGORY_NOT_FOUND");
 
+        // ---------------------------------------------------------------
+        // Danh mục đã ĐÓNG -> không cho đăng tin mới vào.
+        // (Feature 5 - Admin Dashboard: quản trị viên đóng danh mục khi nhóm
+        // hàng đó bị phát hiện có rủi ro, ví dụ tin giả hoặc giao dịch lừa đảo.)
+        // ---------------------------------------------------------------
+        if (!category.IsActive)
+            throw new ValidationException(
+                $"Danh mục \"{category.Name}\" hiện đang tạm đóng nên không thể đăng tin mới.",
+                "CATEGORY_INACTIVE");
+
         // Người bán phải là tài khoản thật (loại trừ tài khoản dịch vụ AI)
         var seller = await _userRepo.GetByIdAsync(sellerId, ct)
             ?? throw new NotFoundException("Không tìm thấy người dùng.", "USER_NOT_FOUND");
@@ -56,6 +66,8 @@ public class ItemService : IItemService
             Title = request.Title.Trim(),
             Slug = SlugHelper.GenerateUnique(request.Title),
             TitleNormalized = SlugHelper.NormalizeForSearch(request.Title),
+            // Mã hàng cho người dùng — sinh tự động, không cho user chọn.
+            ItemCode = await GenerateUniqueItemCodeAsync(ct),
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
             Price = request.Price,
             Condition = request.Condition,
@@ -118,6 +130,13 @@ public class ItemService : IItemService
         {
             var newCategory = await _categoryRepo.GetByIdAsync(request.CategoryId.Value, ct)
                 ?? throw new NotFoundException("Danh mục không tồn tại.", "CATEGORY_NOT_FOUND");
+
+            // Không chuyển tin sang danh mục đang đóng (giống lúc tạo tin).
+            if (!newCategory.IsActive)
+                throw new ValidationException(
+                    $"Danh mục \"{newCategory.Name}\" hiện đang tạm đóng nên không thể chuyển tin sang.",
+                    "CATEGORY_INACTIVE");
+
             item.CategoryId = newCategory.Id;
         }
 
@@ -178,12 +197,12 @@ public class ItemService : IItemService
     }
 
     // ------------------------------------------------------------ DELETE
-    public async Task<ApiResponse<object>> DeleteAsync(Guid userId, bool isAdmin, Guid itemId, CancellationToken ct = default)
+    public async Task<ApiResponse<object>> DeleteAsync(Guid userId, bool isStaff, Guid itemId, CancellationToken ct = default)
     {
         var item = await _itemRepo.GetByIdAsync(itemId, ct)
             ?? throw new NotFoundException("Không tìm thấy tin đăng.", "ITEM_NOT_FOUND");
 
-        if (!isAdmin && item.SellerId != userId)
+        if (!isStaff && item.SellerId != userId)
             throw new ForbiddenException("Bạn không có quyền xóa tin đăng này.", "NOT_ITEM_OWNER");
 
         // Soft delete — query filter của DbContext sẽ ẩn tin này khỏi mọi truy vấn.
@@ -214,6 +233,20 @@ public class ItemService : IItemService
     {
         var item = await _itemRepo.GetBySlugAsync(slug, ct)
             ?? throw new NotFoundException("Không tìm thấy tin đăng.", "ITEM_NOT_FOUND");
+
+        var seller = await _userRepo.GetByIdAsync(item.SellerId, ct);
+        var favCount = await _favoriteRepo.CountByItemAsync(item.Id, ct);
+        var isFav = userId.HasValue && await _favoriteRepo.ExistsAsync(userId.Value, item.Id, ct);
+
+        return await BuildDetailDto(item, item.Category, seller, favCount, isFav);
+    }
+
+    public async Task<ItemDetailDto> GetByCodeAsync(string code, Guid? userId, CancellationToken ct = default)
+    {
+        var item = await _itemRepo.GetByCodeAsync(code, ct)
+            ?? throw new NotFoundException(
+                $"Không tìm thấy tin đăng có mã \"{ItemCodeHelper.Normalize(code)}\".",
+                "ITEM_CODE_NOT_FOUND");
 
         var seller = await _userRepo.GetByIdAsync(item.SellerId, ct);
         var favCount = await _favoriteRepo.CountByItemAsync(item.Id, ct);
@@ -284,7 +317,10 @@ public class ItemService : IItemService
     {
         var rows = await _categoryRepo.ListWithCountsAsync(ct);
 
+        // Chỉ trả về danh mục ĐANG MỞ. Danh mục đã đóng không hiển thị công
+        // khai (tính năng đóng/mở danh mục của Admin Dashboard).
         return rows
+            .Where(r => r.Category.IsActive)
             .Select(r => new CategoryDto
             {
                 Id = r.Category.Id,
@@ -298,6 +334,27 @@ public class ItemService : IItemService
     }
 
     // ------------------------------------------------------------ HELPERS
+
+    /// <summary>
+    /// Sinh mã hàng (<c>ItemCode</c>) chắc chắn chưa tồn tại trong DB.
+    ///
+    /// Mã có 8 ký tự từ 36 ký tự (A-Z, 0-9) -> 36^8 ≈ 2.8 triệu tổ hợp, nên
+    /// xác suất trùng rất thấp; vẫn vòng lặc tới khi tìm được mã chưa có.
+    /// </summary>
+    private async Task<string> GenerateUniqueItemCodeAsync(CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var code = ItemCodeHelper.Generate();
+            if (!await _itemRepo.ExistsByCodeAsync(code, ct))
+                return code;
+        }
+
+        // Rất hiếm gặp (xác suất cực nhỏ) -> báo lỗi thay vì tạo mã trùng.
+        throw new InvalidOperationException(
+            "Không thể sinh mã hàng duy nhất. Vui lòng thử lại.");
+    }
+
     private static List<string> NormalizeImageUrls(List<string>? urls)
     {
         if (urls is null || urls.Count == 0)
@@ -323,6 +380,7 @@ public class ItemService : IItemService
             Id = item.Id,
             Title = item.Title,
             Slug = item.Slug,
+            ItemCode = item.ItemCode,
             Price = item.Price,
             Condition = item.Condition,
             ConditionName = ItemEnumLabels.ConditionName(item.Condition),
@@ -358,6 +416,7 @@ public class ItemService : IItemService
             Id = item.Id,
             Title = item.Title,
             Slug = item.Slug,
+            ItemCode = item.ItemCode,
             Description = item.Description,
             Price = item.Price,
             Condition = item.Condition,

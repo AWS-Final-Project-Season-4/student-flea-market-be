@@ -11,7 +11,7 @@ namespace StudentFleaMarket.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "User, Admin")]
+[Authorize(Roles = "User, Admin, Moderator")]
 public class FavoritesController : ControllerBase
 {
     private readonly IFavoriteService _favoriteService;

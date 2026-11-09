@@ -7,7 +7,7 @@ using StudentFleaMarket.Application.DTOs.Admin;
 namespace StudentFleaMarket.API.Controllers;
 
 /// <summary>
-/// QUẢN LÝ TÀI KHOẢN NGƯỜI DÙNG — phía quản trị viên.
+/// QUẢN LÝ TÀI KHOẢN NGƯỜI DÙNG — phía nhân viên (Admin + Moderator).
 ///
 /// Chức năng chính: CẤM (ban) và GỠ CẤM (unban) tài khoản.
 ///
@@ -15,6 +15,11 @@ namespace StudentFleaMarket.API.Controllers;
 ///   - Tài khoản bị chặn đăng nhập ngay (401 `ACCOUNT_BANNED`).
 ///   - Toàn bộ phiên đăng nhập (refresh token) bị thu hồi.
 ///   - Quyền bán (nếu đang có) cũng bị thu hồi.
+///
+/// PHÂN TẦNG QUYỀN (được kiểm tra ở tầng service — AdminUserService):
+///   - Admin và Moderator đều cấm / gỡ cấm được tài khoản THƯỜNG.
+///   - CHỈ Admin cấm / gỡ cấm được tài khoản Moderator.
+///   - KHÔNG ai cấm / gỡ cấm được tài khoản Admin.
 ///
 /// Endpoint:
 ///   GET  /api/Admin/users                            -> danh sách tài khoản
@@ -28,7 +33,7 @@ namespace StudentFleaMarket.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/Admin/users")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin, Moderator")]
 [Produces("application/json")]
 public class AdminUsersController : ControllerBase
 {
