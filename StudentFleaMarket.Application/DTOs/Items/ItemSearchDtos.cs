@@ -102,26 +102,26 @@ public static class ItemSortOptions
 }
 
 /// <summary>
-/// Tóm tắt các giá trị enum để frontend hiển thị nhãn tiếng Việt.
+/// Helper class providing human-readable English labels for Item enums.
 /// </summary>
 public static class ItemEnumLabels
 {
     public static string ConditionName(int condition) => (ItemCondition)condition switch
     {
-        ItemCondition.New => "Mới 99%",
-        ItemCondition.LikeNew => "Như mới",
-        ItemCondition.Good => "Tốt",
-        ItemCondition.Fair => "Khá",
-        ItemCondition.Poor => "Kém",
-        _ => "Không xác định"
+        ItemCondition.New => "New",
+        ItemCondition.LikeNew => "Like New",
+        ItemCondition.Good => "Good",
+        ItemCondition.Fair => "Fair",
+        ItemCondition.Poor => "Poor",
+        _ => "Unknown"
     };
 
     public static string StatusName(int status) => (ItemStatus)status switch
     {
-        ItemStatus.Available => "Đang bán",
-        ItemStatus.Removed => "Đã gỡ",
-        ItemStatus.Reserved => "Đã đặt",
-        ItemStatus.Sold => "Đã bán",
-        _ => "Không xác định"
+        ItemStatus.Available => "Available",
+        ItemStatus.Removed => "Removed",
+        ItemStatus.Reserved => "Reserved",
+        ItemStatus.Sold => "Sold",
+        _ => "Unknown"
     };
 }

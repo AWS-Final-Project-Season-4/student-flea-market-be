@@ -1,5 +1,6 @@
 using FluentValidation;
 using StudentFleaMarket.Domain.Enums;
+using System.Text.RegularExpressions;
 
 namespace StudentFleaMarket.Application.DTOs.Items;
 
@@ -30,7 +31,7 @@ public class CreateItemRequestDto
     public string Location { get; set; } = null!;
 
     /// <summary>
-    /// Danh sách URL ảnh đã upload (tối đa 8 ảnh).
+    /// Danh sách URL ảnh đã upload (tối đa 5 ảnh).
     /// </summary>
     public List<string>? ImageUrls { get; set; }
 }
@@ -40,33 +41,41 @@ public class CreateItemRequestDtoValidator : AbstractValidator<CreateItemRequest
     public CreateItemRequestDtoValidator()
     {
         RuleFor(x => x.Title)
-            .NotEmpty().WithMessage("Tiêu đề không được để trống.")
-            .MinimumLength(3).WithMessage("Tiêu đề phải có ít nhất 3 ký tự.")
-            .MaximumLength(200).WithMessage("Tiêu đề không được vượt quá 200 ký tự.");
+            .NotEmpty().WithMessage("The title cannot be blank.")
+            .MinimumLength(5).WithMessage("The title must be at least 5 characters.")
+            .MaximumLength(200).WithMessage("The title must not exceed 200 characters.")
+            .Must(t => !Regex.IsMatch(t, @"(.)\1{3,}" ))
+            .WithMessage("The title is invalid.")
+            .Must(t => t.Any(char.IsLetter))
+            .WithMessage("The title must contain meaningful letters.");
 
         RuleFor(x => x.CategoryId)
-            .GreaterThan(0).WithMessage("Danh mục không hợp lệ.");
+            .GreaterThan(0).WithMessage("Invalid category.");
 
         RuleFor(x => x.Description)
-            .MaximumLength(5000).WithMessage("Mô tả không được vượt quá 5000 ký tự.")
+            .MaximumLength(5000).WithMessage("The description must not exceed 5000 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.Description));
 
         RuleFor(x => x.Price)
-            .GreaterThanOrEqualTo(0).WithMessage("Giá bán không thể âm.")
-            .LessThanOrEqualTo(100_000_000).WithMessage("Giá bán không hợp lệ.");
+            .GreaterThanOrEqualTo(0).WithMessage("The selling price cannot be negative.")
+            .LessThanOrEqualTo(100_000_000).WithMessage("The selling price is invalid.");
 
         RuleFor(x => x.Condition)
             .Must(c => Enum.IsDefined(typeof(ItemCondition), c))
-            .WithMessage("Độ mới không hợp lệ.");
+            .WithMessage("Invalid item condition.");
 
         RuleFor(x => x.Location)
-            .NotEmpty().WithMessage("Địa điểm gặp mặt không được để trống.")
-            .MinimumLength(2).WithMessage("Địa điểm gặp mặt phải có ít nhất 2 ký tự.")
-            .MaximumLength(255).WithMessage("Địa điểm gặp mặt không được vượt quá 255 ký tự.");
+            .NotEmpty().WithMessage("The meeting location cannot be blank.")
+            .MinimumLength(6).WithMessage("The meeting location must be at least 6 characters.")
+            .MaximumLength(200).WithMessage("The meeting location must not exceed 200 characters")
+            .Must(loc => !Regex.IsMatch(loc, @"(.)\1{4,}"))
+            .WithMessage("The meeting location is invalid. Please enter a valid location.")
+            .Must(loc => loc.Any(char.IsLetter))
+            .WithMessage("The location must include a specific place name.");
 
         RuleFor(x => x.ImageUrls)
-            .Must(u => u is null || u.Count <= 8)
-            .WithMessage("Mỗi tin đăng chỉ được có tối đa 8 ảnh.");
+            .Must(u => u is null || u.Count <= 5)
+            .WithMessage("Each post can contain a maximum of 5 images.");
     }
 }
 
@@ -91,36 +100,48 @@ public class UpdateItemRequestDtoValidator : AbstractValidator<UpdateItemRequest
     public UpdateItemRequestDtoValidator()
     {
         RuleFor(x => x.Title)
-            .MinimumLength(3).WithMessage("Tiêu đề phải có ít nhất 3 ký tự.")
-            .MaximumLength(200).WithMessage("Tiêu đề không được vượt quá 200 ký tự.")
-            .When(x => !string.IsNullOrWhiteSpace(x.Title));
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty().WithMessage("The title cannot be blank.")
+            .MinimumLength(5).WithMessage("The title must be at least 5 characters.")
+            .MaximumLength(200).WithMessage("The title must not exceed 200 characters.")
+            .Must(t => !Regex.IsMatch(t!, @"(.)\1{3,}"))
+            .WithMessage("The title is invalid.")
+            .Must(t => t!.Any(char.IsLetter))
+            .WithMessage("The title must contain meaningful letters.")
+            .When(x => x.Title is not null);
 
         RuleFor(x => x.CategoryId)
-            .GreaterThan(0).WithMessage("Danh mục không hợp lệ.")
+            .GreaterThan(0).WithMessage("Invalid category.")
             .When(x => x.CategoryId.HasValue);
 
         RuleFor(x => x.Description)
-            .MaximumLength(5000).WithMessage("Mô tả không được vượt quá 5000 ký tự.")
+            .MaximumLength(5000).WithMessage("The description must not exceed 5000 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.Description));
 
         RuleFor(x => x.Price)
-            .GreaterThanOrEqualTo(0).WithMessage("Giá bán không thể âm.")
-            .LessThanOrEqualTo(100_000_000).WithMessage("Giá bán không hợp lệ.")
+            .GreaterThanOrEqualTo(0).WithMessage("The selling price cannot be negative.")
+            .LessThanOrEqualTo(100_000_000).WithMessage("The selling price is invalid.")
             .When(x => x.Price.HasValue);
 
         RuleFor(x => x.Condition)
             .Must(c => c.HasValue && Enum.IsDefined(typeof(ItemCondition), c.Value))
-            .WithMessage("Độ mới không hợp lệ.")
+            .WithMessage("Invalid item condition.")
             .When(x => x.Condition.HasValue);
 
         RuleFor(x => x.Location)
-            .MinimumLength(2).WithMessage("Địa điểm gặp mặt phải có ít nhất 2 ký tự.")
-            .MaximumLength(255).WithMessage("Địa điểm gặp mặt không được vượt quá 255 ký tự.")
-            .When(x => !string.IsNullOrWhiteSpace(x.Location));
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty().WithMessage("The meeting location cannot be blank.")
+            .MinimumLength(6).WithMessage("The meeting location must be at least 6 characters.")
+            .MaximumLength(200).WithMessage("The meeting location must not exceed 200 characters.")
+            .Must(loc => !Regex.IsMatch(loc!, @"(.)\1{4,}"))
+            .WithMessage("The meeting location is invalid. Please enter a valid location.")
+            .Must(loc => loc!.Any(char.IsLetter))
+            .WithMessage("The location must include a specific place name.")
+            .When(x => x.Location is not null);
 
         RuleFor(x => x.ImageUrls)
-            .Must(u => u is null || u.Count <= 8)
-            .WithMessage("Mỗi tin đăng chỉ được có tối đa 8 ảnh.");
+            .Must(u => u is null || u.Count <= 5)
+            .WithMessage("Each post can contain a maximum of 5 images.");
     }
 }
 

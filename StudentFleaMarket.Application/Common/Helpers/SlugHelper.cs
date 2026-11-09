@@ -22,7 +22,6 @@ public static class SlugHelper
         {
             var category = CharUnicodeInfo.GetUnicodeCategory(ch);
 
-            // Bỏ dấu tiếng Việt: giữ lại chữ cái cơ bản (L) và số (N).
             if (category != UnicodeCategory.NonSpacingMark)
             {
                 if (char.IsLetterOrDigit(ch))
@@ -68,7 +67,7 @@ public static class SlugHelper
 
         foreach (var ch in normalized)
         {
-            // Bỏ dấu (NonSpacingMark) — giữ lại chữ cái gốc.
+            
             if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark)
                 continue;
 
@@ -79,7 +78,6 @@ public static class SlugHelper
             }
             else if (!lastWasSpace && sb.Length > 0)
             {
-                // Mọi ký tự phân cách (space, -, _, /, ...) đều gộp thành 1 space.
                 sb.Append(' ');
                 lastWasSpace = true;
             }

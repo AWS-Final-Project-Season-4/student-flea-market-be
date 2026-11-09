@@ -69,7 +69,7 @@ public class EmailSender : IEmailSender
     {
         var subject = "Mã xác thực tài khoản Student Flea Market";
         var body = $@"
-            <div style='font-family:Segoe UI,Arial,sans-serif;max-width:520px'>
+            <div style='font-family:""Times New Roman"",Times,serif;max-width:520px'>
                 <h2 style='color:#16a34a'>Xác thực email</h2>
                 <p>Chào <b>{System.Net.WebUtility.HtmlEncode(fullName)}</b>,</p>
                 <p>Mã xác thực của bạn là:</p>

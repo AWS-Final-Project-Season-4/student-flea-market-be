@@ -37,7 +37,7 @@ public class UserDto
     /// Tên trạng thái dễ đọc: "Chưa đăng ký bán", "Đang chờ duyệt",
     /// "Đã được duyệt", "Bị từ chối".
     /// </summary>
-    public string SellerStatusName { get; set; } = "Chưa đăng ký bán";
+    public string SellerStatusName { get; set; } = "Not registered for sale yet.";
 
     /// <summary>
     /// Tài khoản đã được phép đăng tin bán hay chưa.

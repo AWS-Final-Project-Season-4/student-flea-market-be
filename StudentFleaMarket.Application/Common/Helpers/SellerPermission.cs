@@ -45,20 +45,20 @@ public static class SellerPermission
         {
             case SellerStatus.Pending:
                 throw new ForbiddenException(
-                    "Yêu cầu trở thành người bán của bạn đang chờ Admin duyệt. " +
-                    "Vui lòng đợi được duyệt rồi đăng tin.",
+                    "Your request to become a seller is awaiting Admin approval. " +
+                    "Please wait for approval before posting",
                     "SELLER_REQUEST_PENDING");
 
             case SellerStatus.Rejected:
                 throw new ForbiddenException(
-                    "Yêu cầu trở thành người bán của bạn đã bị từ chối. " +
-                    "Bạn có thể gửi lại yêu cầu để được xét duyệt.",
+                    "Your request to become a seller has been rejected. " +
+                    "You may resubmit your request for review.",
                     "SELLER_REQUEST_REJECTED");
 
             default:
                 throw new ForbiddenException(
-                    "Bạn chưa được cấp quyền đăng bán. " +
-                    "Hãy gửi yêu cầu trở thành người bán và chờ Admin duyệt.",
+                    "You have not been granted permission to list items for sale. " +
+                    "Submit your request to become a seller and wait for the admin to approve it.",
                     "SELLER_NOT_APPROVED");
         }
     }

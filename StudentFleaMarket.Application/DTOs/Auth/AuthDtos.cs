@@ -48,11 +48,14 @@ public class RegisterRequestDtoValidator : AbstractValidator<RegisterRequestDto>
             .MaximumLength(256).WithMessage("Email cannot exceed 256 characters.");
 
         RuleFor(x => x.Password)
+            .Cascade(CascadeMode.Stop)
             .NotEmpty().WithMessage("Password cannot be left blank.")
-            .MinimumLength(6).WithMessage("Password must be at least 6 characters long.")
+            .MinimumLength(8).WithMessage("Password must be at least 8 characters long.")
             .MaximumLength(100).WithMessage("Password cannot exceed 100 characters.")
-            .Matches(@"[A-Za-z]").WithMessage("Password must contain at least one letter.")
-            .Matches(@"\d").WithMessage("Password must contain at least one number.");
+            .Matches(@"[A-Z]").WithMessage("Password must contain at least one uppercase letter (A-Z).")
+            .Matches(@"[a-z]").WithMessage("Password must contain at least one lowercase letter (a-z).")
+            .Matches(@"\d").WithMessage("Password must contain at least one digit (0-9).")
+            .Matches(@"[\W_]").WithMessage("Password must contain at least one special character (!@#$%^&*...).");
 
         RuleFor(x => x.ConfirmPassword)
             .Equal(x => x.Password).WithMessage("Confirm password does not match.");

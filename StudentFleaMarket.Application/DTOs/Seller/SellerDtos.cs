@@ -53,7 +53,7 @@ public class SellerStatusDto
     public string? RejectionReason { get; set; }
 }
 
-// ============================================================ ADMIN (phía quản trị)
+// ======== ADMIN (phía quản trị) ===========================
 
 // <summary>
 // Một yêu cầu trở thành người bán trong danh sách Admin duyệt.
