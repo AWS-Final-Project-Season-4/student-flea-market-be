@@ -34,17 +34,20 @@ public class ExchangeRequestService : IExchangeRequestService
     private readonly IItemRepository _itemRepo;
     private readonly IUserRepository _userRepo;
     private readonly IEmailSender _emailSender;
+    private readonly IChatRepository _chatRepo;
 
     public ExchangeRequestService(
         IExchangeRequestRepository erRepo,
         IItemRepository itemRepo,
         IUserRepository userRepo,
-        IEmailSender emailSender)
+        IEmailSender emailSender,
+        IChatRepository chatRepo)
     {
         _erRepo = erRepo;
         _itemRepo = itemRepo;
         _userRepo = userRepo;
         _emailSender = emailSender;
+        _chatRepo = chatRepo;
     }
 
     // =====================================================================
@@ -64,13 +67,28 @@ public class ExchangeRequestService : IExchangeRequestService
                 "AI_CANNOT_EXCHANGE");
 
         // ----- Món đồ được nhận (của bên kia) -----
-        // Tra cứu theo MÃ HÀNG (ItemCode) mà người dùng nhập tay, không theo Id.
+        // Tra cứu theo MÃ HÀNG (ItemCode) mà người dùng nhập tay, hoặc theo Id
+        // khi client đã có sẵn Id (nút "Exchange Request" trên trang chi tiết
+        // tin đăng -> không cần tra mã hàng).
         // Dùng GetDetailAsync (có Include Seller) để lấy được thông tin
         // người bán cho việc gửi thông báo.
-        var requestedItem = await _itemRepo.GetByCodeAsync(request.RequestedItemCode, ct)
-            ?? throw new NotFoundException(
-                $"Không tìm thấy món đồ có mã \"{ItemCodeHelper.Normalize(request.RequestedItemCode)}\".",
-                "ITEM_CODE_NOT_FOUND");
+        Item? requestedItem;
+        if (request.RequestedItemId.HasValue)
+        {
+            requestedItem = await _itemRepo.GetDetailAsync(request.RequestedItemId.Value, ct);
+            if (requestedItem is null)
+                throw new NotFoundException(
+                    "Không tìm thấy món đồ cần đổi.",
+                    "ITEM_NOT_FOUND");
+        }
+        else
+        {
+            requestedItem = await _itemRepo.GetByCodeAsync(request.RequestedItemCode!, ct);
+            if (requestedItem is null)
+                throw new NotFoundException(
+                    $"Không tìm thấy món đồ có mã \"{ItemCodeHelper.Normalize(request.RequestedItemCode!)}\".",
+                    "ITEM_CODE_NOT_FOUND");
+        }
 
         if (requestedItem.Status != (int)ItemStatus.Available)
             throw new ValidationException(
@@ -210,6 +228,23 @@ public class ExchangeRequestService : IExchangeRequestService
         er.RespondedAt = DateTime.UtcNow;
         er.ResponseNote = string.IsNullOrWhiteSpace(request?.Note) ? null : request.Note.Trim();
 
+        // ---------------------------------------------------------------
+        // MỞ KHUNG CHAT cho 2 bên ngay khi Accept.
+        //
+        // Luồng mong muốn: người bán bấm Accept -> mở thẳng khung chat với
+        // người mua -> 2 bên thống nhất lịch gặp mặt -> 1 bên chốt lịch trong
+        // hệ thống -> mở thông báo giao dịch (có SĐT của cả 2).
+        //
+        // Chat xoay quanh 1 MÓN ĐỒ (unique ItemId + BuyerId), nên hội thoại
+        // gắn với món của BÊN NHẬN (RequestedItem) — món mà người gửi đã
+        // bấm "Exchange Request". Người gửi = Buyer, người nhận = Seller.
+        // ---------------------------------------------------------------
+        er.ConversationId = await GetOrCreateExchangeConversationAsync(
+            er.RequestedItem.Id,
+            er.RequesterId,
+            er.RequestedItem.SellerId,
+            ct);
+
         _erRepo.Update(er);
         await _erRepo.SaveChangesAsync(ct);
 
@@ -219,7 +254,8 @@ public class ExchangeRequestService : IExchangeRequestService
             "Yêu cầu đổi đồ của bạn đã được chấp nhận",
             $@"<p>Chào <b>{System.Net.WebUtility.HtmlEncode(er.Requester?.FullName ?? "")}</b>,</p>
                 <p>Yêu cầu đổi đồ của bạn đã được <b>chấp nhận</b>.</p>
-                <p>Hãy vào mục <b>Giao dịch</b> để khởi tạo đơn hoàn tất đổi đồ.</p>",
+                <p>Hãy vào mục <b>Trò chuyện</b> để thống nhất lịch gặp mặt với
+                <b>{System.Net.WebUtility.HtmlEncode(er.RequestedItem.Seller?.FullName ?? "")}</b>.</p>",
             ct);
 
         return await BuildDtoAsync(er.Id, userId, ct);
@@ -288,6 +324,43 @@ public class ExchangeRequestService : IExchangeRequestService
     // =====================================================================
 
     /// <summary>
+    /// Lấy (hoặc tạo) khung chat giữa người gửi và người nhận yêu cầu đổi đồ.
+    ///
+    /// Chat xoay quanh 1 MÓN ĐỒ: unique index (ItemId, BuyerId). Nên hội thoại
+    /// của cặp (món được nhận, người gửi) là duy nhất — bấm Accept nhiều lần
+    /// vẫn trả về cùng 1 khung chat, không tạo trùng.
+    ///
+    /// Trả về null nếu không tạo được (vd: hội thoại đã tồn tại nhưng lệch
+    /// người — trường hợp hiếm, không nên làm hỏng luồng Accept).
+    /// </summary>
+    private async Task<Guid?> GetOrCreateExchangeConversationAsync(
+        Guid itemId,
+        Guid buyerId,
+        Guid sellerId,
+        CancellationToken ct)
+    {
+        var existing = await _chatRepo.GetByItemAndBuyerAsync(itemId, buyerId, ct);
+        if (existing is not null)
+            return existing.Id;
+
+        var conversation = new Conversation
+        {
+            Id = Guid.NewGuid(),
+            ItemId = itemId,
+            BuyerId = buyerId,
+            SellerId = sellerId,
+            BuyerUnreadCount = 0,
+            SellerUnreadCount = 0,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _chatRepo.AddAsync(conversation, ct);
+        await _chatRepo.SaveChangesAsync(ct);
+
+        return conversation.Id;
+    }
+
+    /// <summary>
     /// Lấy yêu cầu theo id (tracked) kèm quan hệ cần thiết để kiểm tra quyền.
     /// </summary>
     private async Task<ExchangeRequest> GetTrackedAsync(Guid id, CancellationToken ct)
@@ -342,6 +415,9 @@ public class ExchangeRequestService : IExchangeRequestService
             StatusName = ExchangeRequestLabels.StatusName(er.Status),
             CreatedAt = er.CreatedAt,
             RespondedAt = er.RespondedAt,
+            // Khung chat đã mở (khi người bán Accept) — client mở thẳng,
+            // không cần gọi lại /api/Chat/conversations.
+            ConversationId = er.ConversationId,
             // Chỉ khi yêu cầu còn "đang chờ" thì chủ tin mới có thể accept / reject.
             CanRespond = isPending && requestedSellerId == viewerId && er.RequesterId != viewerId,
             // Tương tự, chỉ người gửi mới hủy được khi yêu cầu còn chờ.

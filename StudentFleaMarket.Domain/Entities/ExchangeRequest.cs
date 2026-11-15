@@ -55,8 +55,27 @@ public class ExchangeRequest
     /// <summary>Thời điểm người nhận phản hồi (accept / reject) — null nếu còn chờ.</summary>
     public DateTime? RespondedAt { get; set; }
 
+    /// <summary>
+    /// Khung chat được mở cho cặp người gửi / người nhận sau khi Accept.
+    ///
+    /// Vì sao cần lưu ở đây:
+    ///   Khi người bán bấm Accept, hệ thống mở luôn khung chat giữa 2 bên để
+    ///   họ thống nhất lịch gặp mặt. Chat xoay quanh 1 MÓN ĐỒ (mỗi cặp
+    ///   ItemId + BuyerId chỉ có 1 hội thoại), nên hội thoại này gắn với
+    ///   món đồ của bên nhận (RequestedItem) — món mà người gửi đã bấm
+    ///   "Exchange Request".
+    ///
+    ///   Lưu lại Id để:
+    ///     - Mở đúng khung chat ngay sau khi Accept (trả về cho client).
+    ///     - Từ yêu cầu đổi đồ, đi tới thông báo giao dịch / đơn giao dịch.
+    /// </summary>
+    public Guid? ConversationId { get; set; }
+
     // Navigation Properties
     public ApplicationUser Requester { get; set; } = null!;
     public Item RequestedItem { get; set; } = null!;
     public Item OfferedItem { get; set; } = null!;
+
+    /// <summary>Khung chat đã mở cho 2 bên (mở khi người bán Accept).</summary>
+    public Conversation? Conversation { get; set; }
 }

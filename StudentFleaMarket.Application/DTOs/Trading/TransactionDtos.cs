@@ -81,6 +81,18 @@ public class CreateExchangeTransactionDto
     public string? MeetingLocation { get; set; }
 
     /// <summary>
+    /// Thời điểm gặp mặt đã chốt.
+    ///
+    /// Bỏ trống -> tạo đơn trước, chốt lịch sau bằng
+    /// POST /api/Transactions/{id}/schedule.
+    ///
+    /// Có giá trị -> đơn được "chốt giao dịch" ngay: hệ thống gửi thông báo
+    /// giao dịch (SĐT của cả 2, thời gian, địa điểm) cho cả hai bên và bắt
+    /// đầu đồng hồ đếm hạn 7 ngày để xác nhận bàn giao.
+    /// </summary>
+    public DateTime? ScheduledAt { get; set; }
+
+    /// <summary>
     /// Phương thức thanh toán tiền bù chênh lệch: 1 = Cod, 2 = BankTransfer.
     /// Mặc định 1 (Cod).
     /// </summary>
@@ -108,6 +120,10 @@ public class CreateExchangeTransactionDtoValidator : AbstractValidator<CreateExc
         RuleFor(x => x.PaymentMethod)
             .Must(m => Enum.IsDefined(typeof(PaymentMethod), m))
             .WithMessage("Phương thức thanh toán không hợp lệ.");
+
+        RuleFor(x => x.ScheduledAt)
+            .Must(d => !d.HasValue || d.Value > DateTime.UtcNow)
+            .WithMessage("Thời gian gặp mặt phải nằm trong tương lai.");
 
         RuleFor(x => x.Amount)
             .GreaterThanOrEqualTo(0).WithMessage("Số tiền không thể âm.")
@@ -155,6 +171,44 @@ public class ConfirmPaymentDtoValidator : AbstractValidator<ConfirmPaymentDto>
         RuleFor(x => x.TransactionRef)
             .MaximumLength(150).WithMessage("Mã tham chiếu không được vượt quá 150 ký tự.")
             .When(x => !string.IsNullOrWhiteSpace(x.TransactionRef));
+    }
+}
+
+/// <summary>
+/// CHỐT LỊCH GẶP MẶT cho đơn đổi đồ.
+///
+/// Hai bên thống nhất lịch qua khung chat, rồi MỘT BÊN gọi endpoint này để
+/// nhập vào hệ thống. Ngay sau đó hệ thống mở thông báo giao dịch cho cả 2
+/// bên, trong đó có SỐ ĐIỆN THOẠI của cả hai.
+///
+/// Từ thời điểm gặp mặt đã chốt, hệ thống tính hạn 7 ngày để 2 bên xác nhận
+/// bàn giao — quá hạn thì đơn bị hủy tự động.
+/// </summary>
+public class ScheduleMeetingDto
+{
+    /// <summary>
+    /// Thời điểm gặp mặt (bắt buộc) — phải nằm trong tương lai.
+    /// </summary>
+    public DateTime ScheduledAt { get; set; }
+
+    /// <summary>
+    /// Địa điểm gặp mặt (bắt buộc) — vd: "KTX Khu A, tầng 2".
+    /// Bỏ trống -> giữ nguyên địa điểm trong tin đăng.
+    /// </summary>
+    public string? MeetingLocation { get; set; }
+}
+
+public class ScheduleMeetingDtoValidator : AbstractValidator<ScheduleMeetingDto>
+{
+    public ScheduleMeetingDtoValidator()
+    {
+        RuleFor(x => x.ScheduledAt)
+            .NotEmpty().WithMessage("Phải chọn thời gian gặp mặt.");
+
+        RuleFor(x => x.MeetingLocation)
+            .MinimumLength(2).WithMessage("Địa điểm gặp mặt phải có ít nhất 2 ký tự.")
+            .MaximumLength(255).WithMessage("Địa điểm gặp mặt không được vượt quá 255 ký tự.")
+            .When(x => !string.IsNullOrWhiteSpace(x.MeetingLocation));
     }
 }
 
@@ -222,6 +276,34 @@ public class TransactionDto
 
     /// <summary>Địa điểm gặp mặt giao dịch.</summary>
     public string MeetingLocation { get; init; } = null!;
+
+    /// <summary>
+    /// Thời điểm gặp mặt đã chốt (đơn Exchange). Null = chưa chốt lịch.
+    /// </summary>
+    public DateTime? ScheduledAt { get; init; }
+
+    /// <summary>
+    /// Mốc chốt giao dịch — thời điểm 2 bên xác nhận lịch gặp mặt.
+    /// </summary>
+    public DateTime? ScheduledConfirmedAt { get; init; }
+
+    /// <summary>
+    /// Hạn chót xác nhận bàn giao (ScheduledAt + 7 ngày).
+    /// Null = chưa chốt lịch nên chưa có hạn.
+    /// </summary>
+    public DateTime? ConfirmationDeadline { get; init; }
+
+    /// <summary>Số ngày còn lại để xác nhận. Null = chưa chốt lịch.</summary>
+    public int? DaysLeftToConfirm { get; init; }
+
+    /// <summary>Đơn đã bị hủy tự động vì quá hạn xác nhận.</summary>
+    public bool AutoCancelled { get; init; }
+
+    /// <summary>
+    /// Người đang xem có quyền chốt lịch gặp mặt không
+    /// (1 trong 2 bên, đơn chưa chốt lịch và chưa bị hủy).
+    /// </summary>
+    public bool CanSchedule { get; init; }
 
     /// <summary>Thông tin thanh toán (null nếu đơn giá 0 / không cần thanh toán).</summary>
     public PaymentDto? Payment { get; init; }

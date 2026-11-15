@@ -102,4 +102,23 @@ public interface ITransactionService
         Guid userId,
         Guid transactionId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Chốt lịch gặp mặt cho đơn đổi đồ.
+    ///
+    /// Hai bên thống nhất lịch qua chat rồi MỘT BÊN gọi endpoint này.
+    /// Hệ thống gửi thông báo giao dịch (có SĐT của cả 2, thời gian, địa điểm)
+    /// cho cả hai bên và bắt đầu đồng hồ đếm hạn 7 ngày để xác nhận bàn giao.
+    /// </summary>
+    Task<TransactionDto> ScheduleMeetingAsync(
+        Guid userId,
+        Guid transactionId,
+        ScheduleMeetingDto request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Hủy tự động các đơn đổi đồ quá hạn 7 ngày chưa xác nhận bàn giao.
+    /// Gọi bởi background job. Trả về số đơn đã hủy.
+    /// </summary>
+    Task<int> AutoCancelExpiredAsync(CancellationToken ct = default);
 }

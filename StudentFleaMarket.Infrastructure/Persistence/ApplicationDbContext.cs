@@ -240,6 +240,13 @@ public class AppDbContext: DbContext
             entity.HasIndex(er => er.RequesterId);
             entity.HasIndex(er => er.RequestedItemId);
 
+            // Khung chat đã mở khi người bán Accept — FK tới Conversations.
+            entity.HasIndex(er => er.ConversationId);
+            entity.HasOne(er => er.Conversation)
+                  .WithMany()
+                  .HasForeignKey(er => er.ConversationId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
             entity.HasOne(er => er.Requester)
                   .WithMany()
                   .HasForeignKey(er => er.RequesterId)
@@ -264,6 +271,9 @@ public class AppDbContext: DbContext
             entity.Property(t => t.MeetingLocation).IsRequired().HasMaxLength(255);
             entity.Property(t => t.CancelReason).HasMaxLength(500);
 
+            // Lịch gặp mặt đã chốt — gốc tính hạn 7 ngày để xác nhận bàn giao.
+            entity.Property(t => t.AutoCancelled).HasDefaultValue(false);
+
             // Index phục vụ lọc theo trạng thái / loại / thời điểm tạo.
             entity.HasIndex(t => t.Status);
             entity.HasIndex(t => t.Type);
@@ -271,6 +281,9 @@ public class AppDbContext: DbContext
             entity.HasIndex(t => t.InitiatorId);
             entity.HasIndex(t => t.CounterpartyId);
             entity.HasIndex(t => t.ItemId);
+
+            // Index cho background job quét đơn đổi đồ quá hạn theo lịch gặp mặt.
+            entity.HasIndex(t => new { t.Type, t.Status, t.ScheduledAt });
 
             entity.HasOne(t => t.Initiator)
                   .WithMany()

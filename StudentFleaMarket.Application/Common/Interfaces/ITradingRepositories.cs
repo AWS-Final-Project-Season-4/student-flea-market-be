@@ -105,6 +105,18 @@ public interface ITransactionRepository : IRepository<Transaction>
     Task<List<Transaction>> ListCompletedWithReviewsAsync(
         Guid userId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Lấy các đơn ĐỔI ĐỒ đã chốt lịch gặp mặt nhưng QUÁ HẠN xác nhận
+    /// (quá 7 ngày kể từ thời điểm gặp mặt) và chưa đủ 2 bên xác nhận.
+    ///
+    /// Dùng cho background job tự hủy đơn. Chỉ lấy đơn còn "đang xử lý"
+    /// (Pending / AwaitingConfirmation) — đơn đã hủy hoặc đã hoàn thành thì
+    /// không cần xử lý nữa.
+    /// </summary>
+    Task<List<Transaction>> ListExpiredExchangeAsync(
+        DateTime now,
+        CancellationToken ct = default);
 }
 
 /// <summary>

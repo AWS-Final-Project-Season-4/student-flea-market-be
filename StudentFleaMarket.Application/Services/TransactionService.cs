@@ -209,6 +209,23 @@ public class TransactionService : ITransactionService
 
         var amount = request.Amount ?? er.AdditionalAmount;
 
+        var meetingLocation = string.IsNullOrWhiteSpace(request.MeetingLocation)
+            ? requestedItem.Location
+            : request.MeetingLocation.Trim();
+
+        var now = DateTime.UtcNow;
+
+        // ----- Chốt lịch gặp mặt ngay khi tạo đơn -----
+        // Nếu request có ScheduledAt -> đơn được "chốt giao dịch" luôn: gửi
+        // thông báo giao dịch (SĐT của cả 2, thời gian, địa điểm) cho cả hai
+        // bên và bắt đầu đồng hồ đếm hạn 7 ngày để xác nhận bàn giao.
+        if (request.ScheduledAt.HasValue)
+        {
+            var scheduleError = ExchangePolicy.ValidateSchedule(request.ScheduledAt.Value, meetingLocation, now);
+            if (scheduleError is not null)
+                throw new ValidationException(scheduleError, "INVALID_MEETING_SCHEDULE");
+        }
+
         var transaction = new Transaction
         {
             Id = Guid.NewGuid(),
@@ -220,10 +237,10 @@ public class TransactionService : ITransactionService
             Type = (int)TransactionType.Exchange,
             Amount = amount,
             Status = (int)TransactionStatus.Pending,
-            MeetingLocation = string.IsNullOrWhiteSpace(request.MeetingLocation)
-                ? requestedItem.Location
-                : request.MeetingLocation.Trim(),
-            CreatedAt = DateTime.UtcNow
+            MeetingLocation = meetingLocation,
+            ScheduledAt = request.ScheduledAt,
+            ScheduledConfirmedAt = request.ScheduledAt.HasValue ? now : null,
+            CreatedAt = now
         };
 
         await _txRepo.AddAsync(transaction, ct);
@@ -240,7 +257,7 @@ public class TransactionService : ITransactionService
                 Method = request.PaymentMethod,
                 Status = (int)PaymentStatus.Pending,
                 TransactionRef = BuildTransactionRef(transaction.Id),
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = now
             }, ct);
         }
 
@@ -254,6 +271,14 @@ public class TransactionService : ITransactionService
             (int)TransactionType.Exchange,
             ct,
             itemCode: requestedItem.ItemCode);
+
+        // ----- Đã chốt lịch ngay -> gửi thông báo giao dịch cho cả 2 bên -----
+        if (transaction.ScheduledAt.HasValue)
+        {
+            var detail = await _txRepo.GetDetailAsync(transaction.Id, ct);
+            if (detail is not null)
+                await NotifyDealDetailsAsync(detail, ct);
+        }
 
         return await BuildDtoAsync(transaction.Id, initiatorId, ct);
     }
@@ -654,6 +679,14 @@ public class TransactionService : ITransactionService
         else if (isCompleted)
             suggestion = "Giao dịch đã hoàn thành. Hai bên có thể đánh giá nhau.";
 
+        var deadline = ExchangePolicy.GetDeadline(tx.ScheduledAt);
+        int? daysLeft = null;
+        if (deadline.HasValue)
+        {
+            var remaining = (deadline.Value - DateTime.UtcNow).TotalDays;
+            daysLeft = remaining < 0 ? 0 : (int)Math.Ceiling(remaining);
+        }
+
         return new HandoverConfirmationDto
         {
             TransactionId = tx.Id,
@@ -664,7 +697,9 @@ public class TransactionService : ITransactionService
             IsCompleted = isCompleted,
             ItemCodeMatched = codeMatched,
             ExpectedItemCode = expectedItem?.ItemCode,
-            Suggestion = suggestion
+            Suggestion = suggestion,
+            ConfirmationDeadline = deadline,
+            DaysLeftToConfirm = daysLeft
         };
     }
 
@@ -686,7 +721,6 @@ public class TransactionService : ITransactionService
         tx.Status = (int)TransactionStatus.Cancelled;
         tx.CancelledAt = DateTime.UtcNow;
         tx.CancelReason = string.IsNullOrWhiteSpace(request?.Reason) ? null : request.Reason.Trim();
-
         _txRepo.Update(tx);
         await _txRepo.SaveChangesAsync(ct);
 
@@ -704,6 +738,192 @@ public class TransactionService : ITransactionService
         }
 
         return await BuildDtoAsync(tx.Id, userId, ct);
+    }
+
+    // =====================================================================
+    // CHỐT LỊCH GẶP MẶT (đơn đổi đồ)
+    // =====================================================================
+    /// <summary>
+    /// Chốt lịch gặp mặt cho đơn đổi đồ.
+    ///
+    /// Hai bên thống nhất lịch qua khung chat, rồi MỘT BÊN gọi endpoint này.
+    /// Ngay sau đó hệ thống gửi "thông báo giao dịch" cho CẢ 2 BÊN, trong đó
+    /// có SỐ ĐIỆN THOẠI của cả hai — vì từ đây hai bên cần liên lạc trực tiếp
+    /// để gặp mặt.
+    ///
+    /// Từ thời điểm gặp mặt đã chốt, hệ thống tính hạn 7 ngày để 2 bên xác
+    /// nhận bàn giao — quá hạn thì đơn bị hủy tự động.
+    /// </summary>
+    public async Task<TransactionDto> ScheduleMeetingAsync(
+        Guid userId,
+        Guid transactionId,
+        ScheduleMeetingDto request,
+        CancellationToken ct = default)
+    {
+        var tx = await GetTrackedAsync(transactionId, ct);
+
+        EnsureParticipant(tx, userId);
+
+        if (tx.Type != (int)TransactionType.Exchange)
+            throw new ValidationException(
+                "Chỉ giao dịch đổi đồ mới cần chốt lịch gặp mặt.",
+                "NOT_EXCHANGE_TRANSACTION");
+
+        if ((TransactionStatus)tx.Status is not (TransactionStatus.Pending or TransactionStatus.AwaitingConfirmation))
+            throw new ConflictException(
+                $"Đơn giao dịch đang ở trạng thái \"{TransactionLabels.StatusName(tx.Status)}\" nên không thể chốt lịch.",
+                "TRANSACTION_NOT_PENDING");
+
+        var now = DateTime.UtcNow;
+
+        var location = string.IsNullOrWhiteSpace(request.MeetingLocation)
+            ? tx.MeetingLocation
+            : request.MeetingLocation.Trim();
+
+        var validationError = ExchangePolicy.ValidateSchedule(request.ScheduledAt, location, now);
+        if (validationError is not null)
+            throw new ValidationException(validationError, "INVALID_MEETING_SCHEDULE");
+
+        tx.ScheduledAt = request.ScheduledAt;
+        tx.ScheduledConfirmedAt = now;
+        tx.MeetingLocation = location;
+
+        _txRepo.Update(tx);
+        await _txRepo.SaveChangesAsync(ct);
+
+        // Thông báo giao dịch cho cả 2 bên — có SĐT, thời gian, địa điểm.
+        await NotifyDealDetailsAsync(tx, ct);
+
+        return await BuildDtoAsync(tx.Id, userId, ct);
+    }
+
+    // =====================================================================
+    // TỰ HỦY ĐƠN QUÁ HẠN (background job)
+    // =====================================================================
+    /// <summary>
+    /// Hủy tự động các đơn đổi đồ đã quá 7 ngày kể từ thời điểm gặp mặt
+    /// mà chưa đủ 2 bên xác nhận bàn giao.
+    ///
+    /// Gọi bởi background job (chạy mỗi giờ). Trả về số đơn đã hủy.
+    /// </summary>
+    public async Task<int> AutoCancelExpiredAsync(CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var expired = await _txRepo.ListExpiredExchangeAsync(now, ct);
+
+        var cancelledCount = 0;
+
+        foreach (var tx in expired)
+        {
+            // Đơn đã bị xử lý bởi tiến trình khác -> bỏ qua.
+            if ((TransactionStatus)tx.Status is not (TransactionStatus.Pending or TransactionStatus.AwaitingConfirmation))
+                continue;
+
+            tx.Status = (int)TransactionStatus.Cancelled;
+            tx.CancelledAt = now;
+            tx.AutoCancelled = true;
+            tx.CancelReason =
+                $"Tự động hủy: quá {ExchangePolicy.AutoCancelDays} ngày kể từ thời điểm gặp mặt " +
+                "mà chưa có đủ hai bên xác nhận bàn giao.";
+
+            _txRepo.Update(tx);
+            await _txRepo.SaveChangesAsync(ct);
+
+            // Hoàn tiền nếu đã thanh toán trước đó.
+            var payment = await _paymentRepo.GetByTransactionAsync(tx.Id, ct);
+            if (payment is not null && payment.Status == (int)PaymentStatus.Paid)
+            {
+                var trackedPayment = await _paymentRepo.GetByIdAsync(payment.Id, ct);
+                if (trackedPayment is not null)
+                {
+                    trackedPayment.Status = (int)PaymentStatus.Refunded;
+                    _paymentRepo.Update(trackedPayment);
+                    await _txRepo.SaveChangesAsync(ct);
+                }
+            }
+
+            // Trả 2 tin đăng về trạng thái "đang bán" — món không bị chiếm
+            // vô thời hạn chỉ vì một bên không xuất hiện.
+            await RestoreExchangeItemsAsync(tx, ct);
+
+            // Đóng yêu cầu đổi đồ gốc lại -> 2 bên có thể gửi yêu cầu mới
+            // cho những món này thay vì bị treo ở trạng thái "đã chấp nhận".
+            await CloseExchangeRequestAsync(tx, ct);
+
+            await SendMailSafeAsync(
+                tx.Initiator?.Email,
+                tx.Initiator?.FullName,
+                "Giao dịch đổi đồ đã bị hủy tự động",
+                BuildAutoCancelMailBody(tx, tx.Initiator?.FullName ?? ""),
+                ct);
+
+            await SendMailSafeAsync(
+                tx.Counterparty?.Email,
+                tx.Counterparty?.FullName,
+                "Giao dịch đổi đồ đã bị hủy tự động",
+                BuildAutoCancelMailBody(tx, tx.Counterparty?.FullName ?? ""),
+                ct);
+
+            cancelledCount++;
+        }
+
+        return cancelledCount;
+    }
+
+    /// <summary>
+    /// Trả 2 tin đăng của đơn đổi đồ về trạng thái "đang bán".
+    /// Dùng khi đơn bị hủy (thủ công hoặc tự động).
+    /// </summary>
+    private async Task RestoreExchangeItemsAsync(Transaction tx, CancellationToken ct)
+    {
+        var item = await _itemRepo.GetByIdAsync(tx.ItemId, ct);
+        if (item is not null && item.Status == (int)ItemStatus.Sold)
+        {
+            item.Status = (int)ItemStatus.Available;
+            item.UpdatedAt = DateTime.UtcNow;
+            _itemRepo.Update(item);
+            await _itemRepo.SaveChangesAsync(ct);
+        }
+
+        if (!tx.ExchangeRequestId.HasValue)
+            return;
+
+        var er = await _erRepo.GetDetailAsync(tx.ExchangeRequestId.Value, ct);
+        if (er?.OfferedItem is null)
+            return;
+
+        var offered = await _itemRepo.GetByIdAsync(er.OfferedItem.Id, ct);
+        if (offered is not null && offered.Status == (int)ItemStatus.Sold)
+        {
+            offered.Status = (int)ItemStatus.Available;
+            offered.UpdatedAt = DateTime.UtcNow;
+            _itemRepo.Update(offered);
+            await _itemRepo.SaveChangesAsync(ct);
+        }
+    }
+
+    /// <summary>
+    /// Đóng yêu cầu đổi đồ gốc khi đơn giao dịch bị hủy tự động.
+    ///
+    /// Yêu cầu đổi đồ đã "Accepted" thì không tạo được yêu cầu mới cho cặp món
+    /// đó (chặn spam / tranh chấp). Nhưng khi đơn đã hủy vì quá hạn, 2 bên cần
+    /// có cơ hội giao dịch lại -> chuyển yêu cầu về trạng thái "Cancelled".
+    /// </summary>
+    private async Task CloseExchangeRequestAsync(Transaction tx, CancellationToken ct)
+    {
+        if (!tx.ExchangeRequestId.HasValue)
+            return;
+
+        var er = await _erRepo.GetTrackedDetailAsync(tx.ExchangeRequestId.Value, ct);
+        if (er is null || (ExchangeRequestStatus)er.Status != ExchangeRequestStatus.Accepted)
+            return;
+
+        er.Status = (int)ExchangeRequestStatus.Cancelled;
+        er.RespondedAt = DateTime.UtcNow;
+        er.ResponseNote = "Đơn giao dịch đã bị hủy tự động vì quá hạn xác nhận bàn giao.";
+
+        _erRepo.Update(er);
+        await _erRepo.SaveChangesAsync(ct);
     }
 
     // =====================================================================
@@ -823,6 +1043,19 @@ public class TransactionService : ITransactionService
     {
         var offeredItem = tx.ExchangeRequest?.OfferedItem;
 
+        var deadline = ExchangePolicy.GetDeadline(tx.ScheduledAt);
+        int? daysLeft = null;
+        if (deadline.HasValue)
+        {
+            var remaining = (deadline.Value - DateTime.UtcNow).TotalDays;
+            daysLeft = remaining < 0 ? 0 : (int)Math.Ceiling(remaining);
+        }
+
+        var isParticipant = tx.InitiatorId == viewerId || tx.CounterpartyId == viewerId;
+
+        // SĐT 2 bên chỉ mở khi đã chốt lịch gặp mặt.
+        var revealPhone = tx.ScheduledAt.HasValue;
+
         return new TransactionDto
         {
             Id = tx.Id,
@@ -830,13 +1063,25 @@ public class TransactionService : ITransactionService
             TypeName = TransactionLabels.TypeName(tx.Type),
             Status = tx.Status,
             StatusName = TransactionLabels.StatusName(tx.Status),
-            Initiator = MapParty(tx.Initiator),
-            Counterparty = MapParty(tx.Counterparty),
+            Initiator = MapParty(tx.Initiator, revealPhone),
+            Counterparty = MapParty(tx.Counterparty, revealPhone),
             Item = MapItem(tx.Item),
             OfferedItem = offeredItem is null ? null : MapItem(offeredItem),
             ExchangeRequestId = tx.ExchangeRequestId,
             Amount = tx.Amount,
             MeetingLocation = tx.MeetingLocation,
+            ScheduledAt = tx.ScheduledAt,
+            ScheduledConfirmedAt = tx.ScheduledConfirmedAt,
+            ConfirmationDeadline = deadline,
+            DaysLeftToConfirm = daysLeft,
+            AutoCancelled = tx.AutoCancelled,
+            // Chốt lịch gặp mặt: 1 trong 2 bên, đơn Exchange, chưa chốt lịch,
+            // và đơn còn hiệu lực (chưa hủy / chưa hoàn thành).
+            CanSchedule = tx.Type == (int)TransactionType.Exchange
+                        && tx.ScheduledAt is null
+                        && isParticipant
+                        && (tx.Status == (int)TransactionStatus.Pending
+                            || tx.Status == (int)TransactionStatus.AwaitingConfirmation),
             Payment = tx.Payment is null ? null : MapPayment(tx.Payment, tx.Payment.Payer?.FullName ?? ""),
             CreatedAt = tx.CreatedAt,
             CompletedAt = tx.CompletedAt,
@@ -851,12 +1096,21 @@ public class TransactionService : ITransactionService
         };
     }
 
-    private static TradingPartyDto MapParty(ApplicationUser? user) => new()
+    /// <summary>
+    /// Ánh xạ thông tin một bên trong giao dịch.
+    ///
+    /// SỐ ĐIỆN THOẠI chỉ được lộ ra khi đơn ĐÃ CHỐT LỊCH GẶP MẶT
+    /// (ScheduledAt khác null) — tức là 2 bên đã thống nhất xong và sắp
+    /// gặp nhau, lúc đó mới cần liên lạc trực tiếp. Trước khi chốt lịch,
+    /// SĐT của đối tác được che lại (null) để không lộ thông tin liên lạc
+    /// quá sớm.
+    /// </summary>
+    private static TradingPartyDto MapParty(ApplicationUser? user, bool revealPhone) => new()
     {
         Id = user?.Id ?? Guid.Empty,
         FullName = user?.FullName ?? "",
         AvatarUrl = user?.AvatarUrl,
-        PhoneNumber = user?.PhoneNumber
+        PhoneNumber = revealPhone ? user?.PhoneNumber : null
     };
 
     private static TradingItemDto MapItem(Item? item)
@@ -952,4 +1206,112 @@ public class TransactionService : ITransactionService
             // Bỏ qua — lỗi SMTP không được làm hỏng luồng nghiệp vụ.
         }
     }
+
+    /// <summary>
+    /// Gửi mail nhưng nuốt lỗi — lỗi SMTP không được làm hỏng luồng nghiệp vụ.
+    /// </summary>
+    private async Task SendMailSafeAsync(
+        string? to,
+        string? fullName,
+        string subject,
+        string body,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(to))
+            return;
+
+        try
+        {
+            await _emailSender.SendAsync(to, subject, body, true, ct);
+        }
+        catch (Exception)
+        {
+            // Bỏ qua — lỗi SMTP không được làm hỏng luồng nghiệp vụ.
+        }
+    }
+
+    /// <summary>
+    /// Gửi "THÔNG BÁO GIAO DỊCH" cho cả 2 bên khi lịch gặp mặt đã chốt.
+    ///
+    /// Nội dung gồm: số điện thoại của cả 2, thời gian, địa điểm, mã hàng
+    /// 2 món để 2 bên đối chiếu khi gặp mặt, và hạn chót xác nhận bàn giao.
+    ///
+    /// Từ thời điểm này, 2 bên cần liên lạc trực tiếp (điện thoại) nên SĐT
+    /// mới được mở ra cho nhau.
+    /// </summary>
+    private async Task NotifyDealDetailsAsync(Transaction tx, CancellationToken ct)
+    {
+        var initiator = tx.Initiator;
+        var counterparty = tx.Counterparty;
+
+        var initiatorPhone = string.IsNullOrWhiteSpace(initiator?.PhoneNumber)
+            ? "(chưa cập nhật)"
+            : initiator.PhoneNumber!;
+
+        var counterpartyPhone = string.IsNullOrWhiteSpace(counterparty?.PhoneNumber)
+            ? "(chưa cập nhật)"
+            : counterparty.PhoneNumber!;
+
+        var meetingTime = tx.ScheduledAt.HasValue
+            ? tx.ScheduledAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+            : "(chưa chốt)";
+
+        var deadline = ExchangePolicy.GetDeadline(tx.ScheduledAt);
+        var deadlineText = deadline.HasValue
+            ? deadline.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+            : "(không xác định)";
+
+        var offeredItemCode = tx.ExchangeRequest?.OfferedItem?.ItemCode;
+        var codesHtml = string.IsNullOrWhiteSpace(offeredItemCode)
+            ? string.Empty
+            : $@"<tr><td style=""padding:4px 12px 4px 0""><b>Món của bạn</b></td>
+                   <td style=""padding:4px 0"">{System.Net.WebUtility.HtmlEncode(tx.Item?.ItemCode ?? "")}</td></tr>
+                 <tr><td style=""padding:4px 12px 4px 0""><b>Món của đối tác</b></td>
+                   <td style=""padding:4px 0"">{System.Net.WebUtility.HtmlEncode(offeredItemCode)}</td></tr>";
+
+        var body = $@"<p>Chào <b>{System.Net.WebUtility.HtmlEncode(counterparty?.FullName ?? "")}</b>,</p>
+            <p>Lịch gặp mặt đã được chốt cho giao dịch đổi đồ với
+            <b>{System.Net.WebUtility.HtmlEncode(initiator?.FullName ?? "")}</b>.</p>
+            <table style=""border-collapse:collapse;margin:12px 0"">
+              <tr><td style=""padding:4px 12px 4px 0""><b>Thời gian</b></td>
+                  <td style=""padding:4px 0"">{System.Net.WebUtility.HtmlEncode(meetingTime)}</td></tr>
+              <tr><td style=""padding:4px 12px 4px 0""><b>Địa điểm</b></td>
+                  <td style=""padding:4px 0"">{System.Net.WebUtility.HtmlEncode(tx.MeetingLocation)}</td></tr>
+              <tr><td style=""padding:4px 12px 4px 0""><b>SĐT người gửi</b></td>
+                  <td style=""padding:4px 0"">{System.Net.WebUtility.HtmlEncode(initiatorPhone)}</td></tr>
+              <tr><td style=""padding:4px 12px 4px 0""><b>SĐT người nhận</b></td>
+                  <td style=""padding:4px 0"">{System.Net.WebUtility.HtmlEncode(counterpartyPhone)}</td></tr>
+              {codesHtml}
+            </table>
+            <p>Hạn chót để cả hai bên xác nhận bàn giao là
+            <b>{System.Net.WebUtility.HtmlEncode(deadlineText)}</b>.
+            Quá hạn mà chưa đủ hai bên xác nhận thì giao dịch sẽ bị hủy tự động.</p>
+            <p>Hãy vào mục <b>Giao dịch</b> để xem chi tiết và xác nhận bàn giao.</p>";
+
+        await SendMailSafeAsync(
+            counterparty?.Email,
+            counterparty?.FullName,
+            "Thông báo giao dịch đổi đồ — lịch gặp mặt đã chốt",
+            body,
+            ct);
+
+        await SendMailSafeAsync(
+            initiator?.Email,
+            initiator?.FullName,
+            "Thông báo giao dịch đổi đồ — lịch gặp mặt đã chốt",
+            body,
+            ct);
+    }
+
+    /// <summary>
+    /// Nội dung email thông báo đơn đổi đồ bị hủy tự động.
+    /// </summary>
+    private static string BuildAutoCancelMailBody(Transaction tx, string fullName)
+        => $@"<p>Chào <b>{System.Net.WebUtility.HtmlEncode(fullName)}</b>,</p>
+            <p>Giao dịch đổi đồ với món
+            <b>{System.Net.WebUtility.HtmlEncode(tx.Item?.Title ?? "")}</b>
+            đã bị <b>hủy tự động</b>.</p>
+            <p>Lý do: quá {ExchangePolicy.AutoCancelDays} ngày kể từ thời điểm gặp mặt
+            mà chưa có đủ hai bên xác nhận bàn giao.</p>
+            <p>Các tin đăng liên quan đã được trả lại trạng thái <b>đang bán</b>.</p>";
 }

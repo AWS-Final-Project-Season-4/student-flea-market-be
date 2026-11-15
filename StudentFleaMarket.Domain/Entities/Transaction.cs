@@ -50,6 +50,29 @@ public class Transaction
     /// <summary>Địa điểm gặp mặt để giao dịch trực tiếp (vd: "KTX Khu A").</summary>
     public string MeetingLocation { get; set; } = null!;
 
+    /// <summary>
+    /// THỜI ĐIỂM GẶP MẶT ĐÃ CHỐT (áp dụng cho đơn Exchange).
+    ///
+    /// Hai bên thống nhất qua chat rồi một bên nhập vào hệ thống. Từ mốc này
+    /// hệ thống tính hạn 7 ngày — quá hạn mà chưa cả 2 bên xác nhận bàn giao
+    /// thì đơn bị hủy tự động (xem <c>ExchangePolicy.AutoCancelDays</c>).
+    ///
+    /// NULL = chưa chốt lịch gặp mặt -> chưa bắt đầu đồng hồ đếm hạn.
+    /// </summary>
+    public DateTime? ScheduledAt { get; set; }
+
+    /// <summary>
+    /// Mốc chốt giao dịch — thời điểm hai bên xác nhận đã thống nhất lịch gặp.
+    /// Dùng làm gốc tính hạn 7 ngày.
+    /// </summary>
+    public DateTime? ScheduledConfirmedAt { get; set; }
+
+    /// <summary>
+    /// Đơn đã bị hủy tự động vì quá hạn 7 ngày chưa xác nhận bàn giao.
+    /// Khác với đơn hủy thủ công (CancelReason do người dùng nhập).
+    /// </summary>
+    public bool AutoCancelled { get; set; } = false;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>Thời điểm hoàn thành giao dịch.</summary>

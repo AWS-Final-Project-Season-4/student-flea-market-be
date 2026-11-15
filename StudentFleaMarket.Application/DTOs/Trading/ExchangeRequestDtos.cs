@@ -23,8 +23,20 @@ namespace StudentFleaMarket.Application.DTOs.Trading;
 /// </summary>
 public class CreateExchangeRequestDto
 {
-    /// <summary>Mã hàng của món đồ của bên kia mà muốn nhận (chủ: người nhận yêu cầu).</summary>
-    public string RequestedItemCode { get; set; } = null!;
+    /// <summary>
+    /// Mã hàng của món đồ của bên kia mà muốn nhận (chủ: người nhận yêu cầu).
+    ///
+    /// KHÔNG bắt buộc nếu đã truyền <see cref="RequestedItemId"/> — ưu tiên
+    /// dùng Id khi gửi từ nút "Exchange Request" trên trang chi tiết tin đăng
+    /// (client đã có sẵn Id, không cần tra mã hàng).
+    /// </summary>
+    public string? RequestedItemCode { get; set; }
+
+    /// <summary>
+    /// Id của món đồ của bên kia mà muốn nhận.
+    /// Dùng khi client đã có Id (nút ExchangeRequest trên trang chi tiết tin đăng).
+    /// </summary>
+    public Guid? RequestedItemId { get; set; }
 
     /// <summary>Mã hàng của món đồ của chính mình dùng để đề nghị đổi lấy.</summary>
     public string OfferedItemCode { get; set; } = null!;
@@ -40,10 +52,15 @@ public class CreateExchangeRequestDtoValidator : AbstractValidator<CreateExchang
 {
     public CreateExchangeRequestDtoValidator()
     {
+        // Phải có MÃ HÀNG hoặc ID của món đồ được nhận.
+        RuleFor(x => x)
+            .Must(x => !string.IsNullOrWhiteSpace(x.RequestedItemCode) || x.RequestedItemId.HasValue)
+            .WithMessage("Phải chọn món đồ muốn đổi (mã hàng hoặc Id).");
+
         RuleFor(x => x.RequestedItemCode)
-            .NotEmpty().WithMessage("Phải nhập mã hàng món đồ muốn đổi.")
             .Must(ItemCodeHelper.IsValidFormat)
-            .WithMessage("Mã hàng phải gồm đúng 8 ký tự chữ cái và chữ số.");
+            .WithMessage("Mã hàng phải gồm đúng 8 ký tự chữ cái và chữ số.")
+            .When(x => !string.IsNullOrWhiteSpace(x.RequestedItemCode));
 
         RuleFor(x => x.OfferedItemCode)
             .NotEmpty().WithMessage("Phải nhập mã hàng món đồ đem đổi.")
@@ -60,10 +77,11 @@ public class CreateExchangeRequestDtoValidator : AbstractValidator<CreateExchang
 
         RuleFor(x => x)
             .Must(x => !string.Equals(
-                ItemCodeHelper.Normalize(x.RequestedItemCode),
                 ItemCodeHelper.Normalize(x.OfferedItemCode),
+                ItemCodeHelper.Normalize(x.RequestedItemCode),
                 StringComparison.Ordinal))
-            .WithMessage("Không thể đổi một món đồ lấy chính nó.");
+            .WithMessage("Không thể đổi một món đồ lấy chính nó.")
+            .When(x => !string.IsNullOrWhiteSpace(x.RequestedItemCode));
     }
 }
 
@@ -156,6 +174,12 @@ public class ExchangeRequestDto
 
     public DateTime CreatedAt { get; init; }
     public DateTime? RespondedAt { get; init; }
+
+    /// <summary>
+    /// Id khung chat đã mở cho 2 bên (mở ngay khi người bán bấm Accept).
+    /// Client dùng để mở thẳng khung chat — không cần gọi lại /api/Chat.
+    /// </summary>
+    public Guid? ConversationId { get; init; }
 
     /// <summary>
     /// Người đang xem là chủ của món đồ được nhận (RequestedItem) — tức là

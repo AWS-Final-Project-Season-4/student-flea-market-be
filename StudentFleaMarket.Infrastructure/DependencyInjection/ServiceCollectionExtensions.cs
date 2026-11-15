@@ -55,6 +55,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IEmailSender, EmailSender>();
 
+        // ------------------------------------------- BACKGROUND JOB
+        // Tự hủy đơn đổi đồ quá hạn 7 ngày chưa xác nhận bàn giao.
+        services.AddHostedService<ExchangeAutoCancelService>();
+
         // FluentValidation: tự động validate request DTO trong controller
         services.AddValidatorsFromAssemblyContaining<RegisterRequestDtoValidator>();
         services.AddValidatorsFromAssemblyContaining<UpdateProfileRequestDtoValidator>();

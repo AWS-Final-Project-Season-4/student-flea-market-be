@@ -246,6 +246,9 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<Guid?>("ConversationId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -273,6 +276,8 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
 
                     b.HasIndex("CreatedAt");
 
@@ -779,6 +784,11 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<bool>("AutoCancelled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("CancelReason")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -809,6 +819,12 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<DateTime?>("ScheduledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ScheduledConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
@@ -830,6 +846,8 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.HasIndex("Status");
 
                     b.HasIndex("Type");
+
+                    b.HasIndex("Type", "Status", "ScheduledAt");
 
                     b.ToTable("Transactions");
                 });
@@ -965,6 +983,11 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.ExchangeRequest", b =>
                 {
+                    b.HasOne("StudentFleaMarket.Domain.Entities.Conversation", "Conversation")
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("StudentFleaMarket.Domain.Entities.Item", "OfferedItem")
                         .WithMany()
                         .HasForeignKey("OfferedItemId")
@@ -982,6 +1005,8 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasForeignKey("RequesterId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Conversation");
 
                     b.Navigation("OfferedItem");
 

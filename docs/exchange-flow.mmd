@@ -1,0 +1,181 @@
+flowchart TD
+    %% ============================================================
+    %% LUỒNG CHỨC NĂNG ĐỔI ĐỒ (EXCHANGE) — Student Flea Market
+    %% Gồm 3 phần: Yêu cầu đổi đồ -> Giao dịch -> Xác nhận bàn giao
+    %% ============================================================
+
+    START([Bắt đầu]) --> P1
+
+    %% ---------------- PHẦN 1: YÊU CẦU ĐỔI ĐỒ ----------------
+    subgraph P1 ["PHẦN 1 — YÊU CẦU ĐỔI ĐỒ (ExchangeRequest)"]
+        direction TB
+        A1["Người gửi chọn món của bên kia muốn nhận<br/>(mã hàng 8 ký tự hoặc Id)<br/>+ món của chính mình đem đổi<br/>+ tiền bù chênh lệch + ghi chú"]
+        A2["POST /api/ExchangeRequests"]
+        A3{"Tài khoản có vai trò AiService?"}
+        A3 -- Có --> AX1["403 — AI_CANNOT_EXCHANGE"]
+        A3 -- Không --> A4{"Tra cứu món đồ được nhận<br/>(GetByCodeAsync / GetDetailAsync)"}
+        A4 -- Không tìm thấy --> AX2["404 — ITEM_CODE_NOT_FOUND / ITEM_NOT_FOUND"]
+        A4 -- Tìm thấy --> A5{"Món đồ còn 'đang bán'?"}
+        A5 -- Không --> AX3["400 — ITEM_NOT_AVAILABLE"]
+        A5 -- Có --> A6{"Chủ món bật 'cho phép đổi đồ'<br/>(IsExchangeEnabled)?"}
+        A6 -- Không --> AX4["400 — ITEM_NOT_EXCHANGEABLE"]
+        A6 -- Có --> A7{"Tự đổi với chính món của mình?"}
+        A7 -- Có --> AX5["400 — CANNOT_EXCHANGE_OWN_ITEM"]
+        A7 -- Không --> A8{"Món đem đổi thuộc sở hữu của mình?"}
+        A8 -- Không --> AX6["403 — NOT_ITEM_OWNER"]
+        A8 -- Có --> A9{"Món đem đổi còn 'đang bán'?"}
+        A9 -- Không --> AX7["400 — ITEM_NOT_AVAILABLE"]
+        A9 -- Có --> A10{"Đã có yêu cầu trùng cho cặp món này?"}
+        A10 -- Có --> AX8["409 — EXCHANGE_REQUEST_ALREADY_EXISTS"]
+        A10 -- Không --> A11{"Món được nhận đã có yêu cầu<br/>đang chờ của người khác?"}
+        A11 -- Có --> AX9["409 — ITEM_ALREADY_HAS_EXCHANGE_REQUEST"]
+        A11 -- Không --> A12["Lưu ExchangeRequest = Pending<br/>+ gửi email báo cho chủ món được nhận"]
+        A1 --> A2 --> A3
+        A12 --> A13["GET /api/ExchangeRequests?status=1&direction=incoming|outgoing"]
+    end
+
+    %% ---------------- PHẦN 2: PHẢN HỒI ----------------
+    subgraph P2 ["PHẦN 2 — PHẢN HỒI YÊU CẦU"]
+        direction TB
+        B1{"Ai là người thao tác?"}
+        B1 -- "Chủ món được nhận" --> B2{"Accept hay Reject?"}
+        B2 -- Accept --> B3["POST /api/ExchangeRequests/{id}/accept<br/>Status = Accepted<br/>MỞ KHUNG CHAT cho 2 bên<br/>(unique ItemId + BuyerId)<br/>Gửi email cho người gửi"]
+        B2 -- Reject --> B4["POST /api/ExchangeRequests/{id}/reject<br/>Status = Rejected<br/>Gửi email cho người gửi"]
+        B1 -- "Người gửi" --> B5["POST /api/ExchangeRequests/{id}/cancel<br/>Status = Cancelled"]
+        B1 -- "Không phải 2 bên" --> BX["403 — NOT_EXCHANGE_REQUEST_OWNER"]
+        B1 --> B6{"Yêu cầu còn 'Pending'?"}
+        B6 -- Không --> BX2["409 — EXCHANGE_REQUEST_NOT_PENDING"]
+    end
+
+    %% ---------------- PHẦN 3: TẠO ĐƠN GIAO DỊCH ----------------
+    subgraph P3 ["PHẦN 3 — TẠO ĐƠN GIAO DỊCH ĐỔI ĐỒ (Transaction)"]
+        direction TB
+        C1["POST /api/Transactions/exchange<br/>{ exchangeRequestId, amount?,<br/>meetingLocation?, scheduledAt?, paymentMethod }"]
+        C2{"Tài khoản có vai trò AiService?"}
+        C2 -- Có --> CX1["403 — AI_CANNOT_TRANSACT"]
+        C2 -- Không --> C3{"Người gửi yêu cầu có khớp với<br/>initiator của đơn?"}
+        C3 -- Không --> CX2["403 — NOT_EXCHANGE_REQUEST_OWNER"]
+        C3 -- Có --> C4{"Yêu cầu đã Accepted?"}
+        C4 -- Không --> CX3["400 — EXCHANGE_REQUEST_NOT_ACCEPTED"]
+        C4 -- Có --> C5{"Yêu cầu này đã có đơn giao dịch?"}
+        C5 -- Có --> CX4["409 — TRANSACTION_ALREADY_EXISTS"]
+        C5 -- Không --> C6{"Cả 2 món đồ còn 'đang bán'?"}
+        C6 -- Không --> CX5["400 — ITEM_NOT_AVAILABLE /<br/>OFFERED_ITEM_NOT_AVAILABLE"]
+        C6 -- Có --> C7{"Món được nhận đang có đơn<br/>giao dịch khác?"}
+        C7 -- Có --> CX6["409 — ITEM_ALREADY_HAS_TRANSACTION"]
+        C7 -- Không --> C8["Tạo Transaction = Pending<br/>Type = Exchange, Amount = tiền bù<br/>MeetingLocation = địa điểm của tin đăng"]
+        C8 --> C9{"Số tiền bù > 0?"}
+        C9 -- Có --> C10["Tạo Payment = Pending<br/>(COD / BankTransfer)"]
+        C9 -- Không --> C11["Không tạo Payment"]
+        C10 --> C12["Gửi email báo giao dịch mới cho bên kia"]
+        C11 --> C12
+        C12 --> C13{"Request có ScheduledAt?"}
+        C13 -- Có --> C14["Kiểm tra lịch gặp mặt"]
+        C13 -- Không --> C15["Đơn tạo trước, chốt lịch sau<br/>bằng POST /schedule"]
+        C1 --> C2
+    end
+
+    %% ---------------- PHẦN 4: CHỐT LỊCH GẶP MẶT ----------------
+    subgraph P4 ["PHẦN 4 — CHỐT LỊCH GẶP MẶT"]
+        direction TB
+        D1["2 bên thống nhất lịch qua khung chat<br/>-> MỘT BÊN nhập vào hệ thống"]
+        D2["POST /api/Transactions/{id}/schedule<br/>{ scheduledAt, meetingLocation }"]
+        D3{"Đúng là đơn Exchange?"}
+        D3 -- Không --> DX1["400 — NOT_EXCHANGE_TRANSACTION"]
+        D3 -- Có --> D4{"Đơn còn Pending /<br/>AwaitingConfirmation?"}
+        D4 -- Không --> DX2["409 — TRANSACTION_NOT_PENDING"]
+        D4 -- Có --> D5{"ValidateSchedule:<br/>• thời gian > hiện tại<br/>• không quá 365 ngày<br/>• địa điểm có nội dung (≤255)"}
+        D5 -- Không hợp lệ --> DX3["400 — INVALID_MEETING_SCHEDULE"]
+        D5 -- Hợp lệ --> D6["Lưu ScheduledAt + ScheduledConfirmedAt<br/>+ MeetingLocation"]
+        D6 --> D7["BẮT ĐẦU ĐỒNG HỒ 7 NGÀY<br/>Deadline = ScheduledAt + 7 ngày"]
+        D7 --> D8["GỬI THÔNG BÁO GIAO DỊCH cho CẢ 2 BÊN<br/>• SĐT của cả 2 (được mở khoá)<br/>• thời gian, địa điểm<br/>• mã hàng 2 món để đối chiếu<br/>• hạn chót xác nhận"]
+        D1 --> D2 --> D3
+    end
+
+    %% ---------------- PHẦN 5: GẶP MẶT & XÁC NHẬN BÀN GIAO ----------------
+    subgraph P5 ["PHẦN 5 — GẶP MẶT & XÁC NHẬN BÀN GIAO 2 CHIỀU"]
+        direction TB
+        E1["2 bên gặp mặt tại địa điểm đã chốt"]
+        E2["POST /api/Transactions/{id}/handover<br/>{ itemReceivedOk, itemCodeVerified, note }"]
+        E3{"Đúng là đơn Exchange?"}
+        E3 -- Không --> EX1["400 — NOT_EXCHANGE_TRANSACTION"]
+        E3 -- Có --> E4{"Đơn còn Pending /<br/>AwaitingConfirmation?"}
+        E4 -- Không --> EX2["409 — TRANSACTION_NOT_PENDING"]
+        E4 -- Có --> E5{"Bên này đã xác nhận trước?"}
+        E5 -- Có --> EX3["409 — ALREADY_CONFIRMED_HANDOVER"]
+        E5 -- Không --> E6["Xác định món ĐÁNG LẼ phải nhận:<br/>• Người gửi  -> RequestedItem (tx.Item)<br/>• Người nhận -> OfferedItem"]
+        E6 --> E7{"Người dùng nhập mã hàng<br/>của món vừa nhận?"}
+        E7 -- "Có, KHỚP mã" --> E8["Ghi TransactionConfirmation<br/>(ItemReceivedOk = true)"]
+        E7 -- "Có, KHÔNG khớp" --> EX4["400 — ITEM_CODE_MISMATCH<br/>Không cho xác nhận 'đã nhận đúng'<br/>gợi ý tạo report"]
+        E7 -- "Không nhập mã" --> E8
+        E8 --> E9{"Số bên đã xác nhận >= 2?"}
+        E9 -- "Chưa (1/2)" --> E10["Status = AwaitingConfirmation<br/>Gửi email yêu cầu bên kia xác nhận<br/>GET /handover để xem số bên đã xác nhận"]
+        E9 -- "Rồi (2/2)" --> E11["Status = Completed + CompletedAt"]
+        E11 --> E12["Đánh dấu món được nhận = Đã bán<br/>(đổi chủ sang người gửi yêu cầu)<br/>Món đem đổi cũng = Đã bán"]
+        E12 --> E13["Mở khoá đánh giá 2 chiều<br/>(Review)"]
+        E1 --> E2 --> E3
+    end
+
+    %% ---------------- PHẦN 6: THANH TOÁN ----------------
+    subgraph P6 ["PHẦN 6 — THANH TOÁN TIỀN BÙ CHÊNH LỆCH"]
+        direction TB
+        F1{"Đơn có Payment?"}
+        F1 -- Không --> F2["Không cần thanh toán<br/>(tiền bù = 0)"]
+        F1 -- Có --> F3["POST /api/Transactions/{id}/payment<br/>Chỉ người trả tiền (Initiator) được xác nhận"]
+        F3 --> F4{"Đã thanh toán rồi?"}
+        F4 -- Có --> FX1["409 — PAYMENT_ALREADY_PAID"]
+        F4 -- Không --> F5["Payment = Paid + PaidAt<br/>Gửi email báo đã thanh toán<br/>(đơn vẫn giữ trạng thái Pending)"]
+    end
+
+    %% ---------------- PHẦN 7: HỦY & TỰ HỦY QUÁ HẠN ----------------
+    subgraph P7 ["PHẦN 7 — HỦY ĐƠN & TỰ HỦY QUÁ HẠN"]
+        direction TB
+        G1{"Ai muốn hủy?"}
+        G1 -- "1 trong 2 bên" --> G2["POST /api/Transactions/{id}/cancel"]
+        G1 -- "Người ngoài" --> GX1["403 — NOT_TRANSACTION_PARTICIPANT"]
+        G2 --> G3{"Đơn còn Pending?"}
+        G3 -- Không --> GX2["409 — TRANSACTION_NOT_PENDING"]
+        G3 -- Có --> G4["Status = Cancelled + CancelReason<br/>Payment đã Paid -> Refunded"]
+        G4 --> G5["Trả 2 tin đăng về 'đang bán'"]
+        G6["Background job chạy mỗi 1 GIỜ<br/>ExchangeAutoCancelService"]
+        G7{"Quá hạn 7 ngày kể từ ScheduledAt<br/>mà chưa đủ 2 bên xác nhận?"}
+        G7 -- Không --> G8["Giữ nguyên, vòng lặp tiếp theo"]
+        G7 -- Có --> G9["Status = Cancelled, AutoCancelled = true<br/>Payment đã Paid -> Refunded"]
+        G9 --> G5
+        G5 --> G10["Đóng ExchangeRequest gốc -> Cancelled<br/>(2 bên có thể gửi yêu cầu mới)"]
+        G10 --> G11["Gửi email báo hủy tự động cho cả 2 bên"]
+        G6 --> G7
+    end
+
+    %% ---------------- NỐI CÁC PHẦN ----------------
+    A12 --> B1
+    B3 --> C1
+    B4 --> ENDX([Kết thúc — Không có giao dịch])
+    B5 --> ENDX
+    BX2 --> ENDX
+    C14 --> D1
+    C15 --> D1
+    D8 --> E1
+    E10 --> E1
+    F2 --> E1
+    F5 --> E1
+    E13 --> ENDOK([Kết thúc — Giao dịch hoàn thành])
+    G8 --> G6
+    G11 --> ENDC([Kết thúc — Giao dịch đã hủy])
+
+    %% ---------------- STYLE ----------------
+    classDef start fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef action fill:#e3f2fd,stroke:#1565c0,stroke-width:1.5px,color:#0d47a1
+    classDef decision fill:#fff8e1,stroke:#f9a825,stroke-width:1.5px,color:#e65100
+    classDef error fill:#ffebee,stroke:#c62828,stroke-width:1.5px,color:#b71c1c
+    classDef success fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef email fill:#f3e5f5,stroke:#7b1fa2,stroke-width:1.5px,color:#4a148c
+    classDef job fill:#fff3e0,stroke:#ef6c00,stroke-width:1.5px,color:#e65100
+
+    class START start
+    class ENDOK,ENDC success
+    class A1,A2,A12,A13,B3,B4,B5,C1,C8,C10,C11,C12,C14,C15,D1,D2,D6,D8,E1,E2,E6,E8,E10,E11,E12,E13,F3,F5,G2,G4,G5,G10,G11 action
+    class A3,A5,A6,A7,A8,A9,A10,A11,B1,B2,B6,C2,C3,C4,C5,C6,C7,C9,C13,D3,D4,D5,E3,E4,E5,E7,E9,F1,F4,G1,G3,G7 decision
+    class AX1,AX2,AX3,AX4,AX5,AX6,AX7,AX8,AX9,BX,BX2,CX1,CX2,CX3,CX4,CX5,CX6,DX1,DX2,DX3,EX1,EX2,EX3,EX4,FX1,GX1,GX2 error
+    class D7 email
+    class G6,G8 job

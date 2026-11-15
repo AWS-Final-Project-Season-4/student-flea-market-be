@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using StudentFleaMarket.Application.Common.Helpers;
 using StudentFleaMarket.Application.Common.Interfaces;
 using StudentFleaMarket.Application.DTOs.Trading;
 using StudentFleaMarket.Domain.Entities;
@@ -233,6 +234,23 @@ public class TransactionRepository : EfRepository<Transaction>, ITransactionRepo
             .Where(t => t.Status == (int)TransactionStatus.Completed
                      && (t.InitiatorId == userId || t.CounterpartyId == userId))
             .OrderByDescending(t => t.CompletedAt)
+            .ToListAsync(ct);
+
+    public Task<List<Transaction>> ListExpiredExchangeAsync(
+        DateTime now,
+        CancellationToken ct = default)
+        => DbSet
+            .IgnoreQueryFilters()
+            .Include(t => t.Initiator)
+            .Include(t => t.Counterparty)
+            .Include(t => t.Item)
+            .Include(t => t.ExchangeRequest).ThenInclude(er => er!.OfferedItem)
+            .Include(t => t.Confirmations)
+            .Where(t => t.Type == (int)TransactionType.Exchange
+                     && (t.Status == (int)TransactionStatus.Pending
+                         || t.Status == (int)TransactionStatus.AwaitingConfirmation)
+                     && t.ScheduledAt != null
+                     && t.ScheduledAt.Value.AddDays(ExchangePolicy.AutoCancelDays) < now)
             .ToListAsync(ct);
 }
 

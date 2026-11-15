@@ -171,6 +171,34 @@ public class TransactionsController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// CHỐT LỊCH GẶP MẶT cho đơn đổi đồ.
+    ///
+    /// Hai bên thống nhất lịch qua khung chat, rồi MỘT BÊN gọi endpoint này:
+    ///
+    ///   POST /api/Transactions/{id}/schedule
+    ///   {
+    ///     "scheduledAt": "2026-11-20T15:30:00Z",
+    ///     "meetingLocation": "KTX Khu A, tầng 2"
+    ///   }
+    ///
+    /// Ngay sau khi chốt, hệ thống gửi "thông báo giao dịch" cho CẢ HAI BÊN,
+    /// trong đó có SỐ ĐIỆN THOẠI của cả hai, thời gian và địa điểm gặp mặt.
+    ///
+    /// Từ thời điểm gặp mặt, hệ thống tính hạn 7 ngày để cả hai bên xác nhận
+    /// bàn giao — quá hạn mà chưa đủ hai bên xác nhận thì đơn bị hủy tự động
+    /// và các tin đăng được trả lại trạng thái "đang bán".
+    /// </summary>
+    [HttpPost("{id:guid}/schedule")]
+    public async Task<IActionResult> ScheduleMeeting(
+        Guid id,
+        [FromBody] ScheduleMeetingDto request,
+        CancellationToken ct)
+    {
+        var result = await _service.ScheduleMeetingAsync(GetUserId(), id, request, ct);
+        return Ok(result);
+    }
+
     private Guid GetUserId()
     {
         var raw = User.FindFirstValue(ClaimTypes.NameIdentifier)

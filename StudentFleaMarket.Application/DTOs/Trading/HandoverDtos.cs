@@ -93,4 +93,13 @@ public class HandoverConfirmationDto
     /// Gợi ý cho người dùng: nếu món nhận được có vấn đề, hãy tạo report.
     /// </summary>
     public string? Suggestion { get; init; }
+
+    /// <summary>
+    /// Hạn chót xác nhận bàn giao (thời điểm gặp mặt + 7 ngày).
+    /// Null = chưa chốt lịch gặp mặt nên chưa có hạn.
+    /// </summary>
+    public DateTime? ConfirmationDeadline { get; init; }
+
+    /// <summary>Số ngày còn lại để xác nhận. Null = chưa chốt lịch.</summary>
+    public int? DaysLeftToConfirm { get; init; }
 }
