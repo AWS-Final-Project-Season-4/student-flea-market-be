@@ -80,6 +80,21 @@ public class EmailSender : IEmailSender
         return SendAsync(to, subject, body, true, ct);
     }
 
+    public Task SendPasswordResetOtpAsync(string to, string fullName, string code, CancellationToken ct = default)
+    {
+        var subject = "Mã đặt lại mật khẩu Student Flea Market";
+        var body = $@"
+            <div style='font-family:""Times New Roman"",Times,serif;max-width:520px'>
+                <h2 style='color:#d97706'>Đặt lại mật khẩu</h2>
+                <p>Chào <b>{System.Net.WebUtility.HtmlEncode(fullName)}</b>,</p>
+                <p>Mã OTP để đặt lại mật khẩu của bạn là:</p>
+                <p style='font-size:28px;font-weight:bold;letter-spacing:6px;color:#111'>{code}</p>
+                <p>Mã có hiệu lực trong <b>10 phút</b>. Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này.</p>
+            </div>";
+
+        return SendAsync(to, subject, body, true, ct);
+    }
+
     private static string StripHtml(string html)
     {
         return System.Text.RegularExpressions.Regex.Replace(html, "<.*?>", string.Empty)

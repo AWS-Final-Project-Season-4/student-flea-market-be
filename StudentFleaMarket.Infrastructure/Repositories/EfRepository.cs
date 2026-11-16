@@ -52,6 +52,9 @@ public class UserRepository : EfRepository<ApplicationUser>, IUserRepository
     public Task<ApplicationUser?> GetByEmailAsync(string email, CancellationToken ct = default)
         => DbSet.FirstOrDefaultAsync(u => u.Email == email, ct);
 
+    public Task<ApplicationUser?> GetByGoogleIdAsync(string googleId, CancellationToken ct = default)
+        => DbSet.FirstOrDefaultAsync(u => u.GoogleId == googleId, ct);
+
     public Task<ApplicationUser?> GetByUsernameAsync(string username, CancellationToken ct = default)
         => DbSet.FirstOrDefaultAsync(u => u.Username != null && u.Username.ToLower() == username.ToLower(), ct);
 

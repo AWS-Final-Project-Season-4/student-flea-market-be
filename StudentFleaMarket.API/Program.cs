@@ -17,6 +17,7 @@ var builder = WebApplication.CreateBuilder(args);
 // ---------------------------------------------------------------- Configuration
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
+builder.Services.Configure<GoogleAuthOptions>(builder.Configuration.GetSection("Google"));
 
 // ------------------------------------------------------------------- Database
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
