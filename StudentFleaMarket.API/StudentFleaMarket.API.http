@@ -1,44 +1,32 @@
-@host = http://localhost:5033
-@token = replace-with-access-token
+@StudentFleaMarket.API_HostAddress = http://localhost:5033
 
-GET {{host}}/health
-
-###
-POST {{host}}/api/auth/register
-Content-Type: application/json
-
-{
-  "fullName": "Student Demo",
-  "email": "student@example.com",
-  "password": "StrongPass1",
-  "schoolName": "Demo University",
-  "studentCode": "S001"
-}
+GET {{StudentFleaMarket.API_HostAddress}}/weatherforecast/
+Accept: application/json
 
 ###
-POST {{host}}/api/auth/login
-Content-Type: application/json
 
-{
-  "email": "student@example.com",
-  "password": "StrongPass1"
-}
-
-###
-GET {{host}}/api/items?page=1&pageSize=20
-
-###
-POST {{host}}/api/items
+### Presign upload ảnh tin đăng (chỉ chủ tin)
+POST {{StudentFleaMarket.API_HostAddress}}/api/Items/sell/replace-with-item-id/images/presign
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "categoryId": 1,
-  "title": "Used textbook",
-  "description": "Good condition",
-  "price": 50000,
-  "condition": 3,
-  "isExchangeEnabled": true,
-  "location": "Campus A",
-  "imageUrls": []
+  "files": [
+    {
+      "fileName": "textbook-cover.jpg",
+      "contentType": "image/jpeg",
+      "sizeBytes": 1048576
+    }
+  ]
+}
+
+### Xác nhận ảnh đã upload -> lưu vào ItemImage
+POST {{StudentFleaMarket.API_HostAddress}}/api/Items/sell/replace-with-item-id/images/confirm
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "objectKeys": [
+    "raw/users/replace-with-user-id/items/replace-with-item-id/replace-with-upload-id.jpg"
+  ]
 }

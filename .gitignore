@@ -3,32 +3,8 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
-# Local environment and secrets
+# dotenv files
 .env
-.env.*
-!.env.example
-!.env.*.example
-
-# Machine-specific ASP.NET Core configuration
-**/appsettings.Local.json
-**/appsettings.*.Local.json
-**/appsettings.local.json
-**/appsettings.*.local.json
-
-# Local database files
-*.db
-*.db-shm
-*.db-wal
-*.sqlite
-*.sqlite3
-
-# Test coverage output directories
-coverage/
-.coverage/
-
-# Local certificates and private keys
-*.p12
-*.key
 
 # User-specific files
 *.rsuser
@@ -260,6 +236,10 @@ _pkginfo.txt
 *.[Cc]ache
 # but keep track of directories ending in .cache
 !?*.[Cc]ache/
+
+# Local secrets / connection strings (không được commit)
+appsettings.*.local.json
+*.env.local
 
 # Others
 ClientBin/
@@ -504,3 +484,8 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# AWS SAM build output and extra env files
+.aws-sam/
+.env.*
+!.env.example

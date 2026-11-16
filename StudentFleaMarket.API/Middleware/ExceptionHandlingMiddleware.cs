@@ -1,50 +1,88 @@
-using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 using StudentFleaMarket.Application.Common;
+using StudentFleaMarket.Application.Common.Exceptions;
 
 namespace StudentFleaMarket.API.Middleware;
 
-public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
+public class ExceptionHandlingMiddleware
 {
-    public async Task InvokeAsync(HttpContext context)
+    private readonly RequestDelegate _next;
+    private readonly ILogger<ExceptionHandlingMiddleware> _logger;
+
+    public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
+    {
+        _next = next;
+        _logger = logger;
+    }
+
+       public async Task InvokeAsync(HttpContext context)
     {
         try
         {
-            await next(context);
+            await _next(context);
         }
-        catch (Exception exception)
+        catch (AppException ex)
         {
-            await WriteProblemAsync(context, exception);
+            _logger.LogWarning(ex, "AppException: {Code} - {Message}", ex.Code, ex.Message);
+            await WriteResponseAsync(context, MapStatusCode(ex), ApiResponse.Fail(ex.Message, ex.Code));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            await WriteResponseAsync(context, StatusCodes.Status401Unauthorized,
+                ApiResponse.Fail(ex.Message, "UNAUTHORIZED"));
+        }
+        catch (BadHttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "BadHttpRequestException: {Message}", ex.Message);
+            await WriteResponseAsync(context, StatusCodes.Status400BadRequest,
+                ApiResponse.Fail(ex.Message, "BAD_REQUEST"));
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "ArgumentException: {Message}", ex.Message);
+            await WriteResponseAsync(context, StatusCodes.Status400BadRequest,
+                ApiResponse.Fail(ex.Message, "INVALID_ARGUMENT"));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            _logger.LogWarning(ex, "KeyNotFoundException: {Message}", ex.Message);
+            await WriteResponseAsync(context, StatusCodes.Status404NotFound,
+                ApiResponse.Fail(ex.Message, "NOT_FOUND"));
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("Request was cancelled by client.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unhandled exception: {Message}", ex.Message);
+            await WriteResponseAsync(context, StatusCodes.Status500InternalServerError,
+                ApiResponse.Fail("A system error has occurred. Please try again later.", "INTERNAL_ERROR"));
         }
     }
 
-    private async Task WriteProblemAsync(HttpContext context, Exception exception)
-    {
-        var (status, title) = exception switch
-        {
-            ValidationException => (StatusCodes.Status400BadRequest, "Validation failed"),
-            UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, "Unauthorized"),
-            ForbiddenException => (StatusCodes.Status403Forbidden, "Forbidden"),
-            NotFoundException => (StatusCodes.Status404NotFound, "Not found"),
-            ConflictException => (StatusCodes.Status409Conflict, "Conflict"),
-            _ => (StatusCodes.Status500InternalServerError, "Unexpected error")
-        };
-        if (status >= 500) logger.LogError(exception, "Unhandled request exception");
-        else logger.LogWarning(exception, "Request failed with status {StatusCode}", status);
 
-        var problem = new ProblemDetails
+    private static int MapStatusCode(AppException ex) => ex switch
+    {
+        ValidationException => StatusCodes.Status400BadRequest,
+        UnauthorizedException => StatusCodes.Status401Unauthorized,
+        ForbiddenException => StatusCodes.Status403Forbidden,
+        NotFoundException => StatusCodes.Status404NotFound,
+        ConflictException => StatusCodes.Status409Conflict,
+        _ => StatusCodes.Status400BadRequest
+    };
+
+    private static async Task WriteResponseAsync(HttpContext context, int statusCode, ApiResponse body)
+    {
+        if (context.Response.HasStarted) return;
+
+        context.Response.Clear();
+        context.Response.StatusCode = statusCode;
+        context.Response.ContentType = "application/json; charset=utf-8";
+
+        await context.Response.WriteAsync(JsonSerializer.Serialize(body, new JsonSerializerOptions
         {
-            Status = status,
-            Title = title,
-            Detail = status == 500 ? "An unexpected error occurred." : exception.Message,
-            Instance = context.Request.Path
-        };
-        problem.Extensions["traceId"] = context.TraceIdentifier;
-        if (exception is ValidationException validationException)
-            problem.Extensions["errors"] = validationException.Errors
-                .GroupBy(x => x.PropertyName)
-                .ToDictionary(x => x.Key, x => x.Select(e => e.ErrorMessage).ToArray());
-        context.Response.StatusCode = status;
-        await context.Response.WriteAsJsonAsync(problem);
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        }));
     }
 }

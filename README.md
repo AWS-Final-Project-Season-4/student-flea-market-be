@@ -1,82 +1,1315 @@
-# Student Flea Market Backend
+⚙️ STUDENT FLEA MARKET - BACKEND WEB API
 
-ASP.NET Core 8 REST API for the Student Flea Market platform. The current vertical slice supports authentication, categories, and item listing management.
+An enterprise-ready, robust RESTful Web API powering the Student Flea Market platform. Build with .NET 8, Entity Framework Core and PostgreSQL, engineered to handle high-concurrency requests and integrate directly with AWS Cloud Infrastructure.
 
-## Stack
+--------------------------------
 
-- .NET SDK 8.0.427 (pinned in `global.json`)
-- ASP.NET Core Web API
-- ASP.NET Core Identity and JWT bearer authentication
-- Entity Framework Core 8 and PostgreSQL
-- FluentValidation, Serilog, Swagger
-- xUnit
+🚀 Tech Stack & Core Libraries
+- Runtime & Framework: .NET 8 Web API
+- Database & Engine: PostgreSQL
+- ORM & Data Access: Entity Framework Core 8
+- Authentication & Security: JWT (JSON Web Tokens) with Refresh Token rotation, ASP.NET Core Identity / Password Hashing
+- Object Mapping: Mapster (or AutoMapper)
+- Validation: FluentValidation
+- API Documentation: Swagger UI
+- Cloud SDK: AWS SDK for .NET (S3, CloudFront utilities)
+- Logging & Diagnostics: SeriLog
+- Containerization: Docker & Docker Compose
 
-## Projects
+-----------------------------------
 
-- `StudentFleaMarket.Domain`: entities and domain enums.
-- `StudentFleaMarket.Application`: API contracts, use-case interfaces, validation, and shared exceptions.
-- `StudentFleaMarket.Infrastructure`: EF Core, Identity, JWT, and catalog implementations.
-- `StudentFleaMarket.API`: controllers, middleware, HTTP pipeline, and configuration.
-- `StudentFleaMarket.Tests`: automated tests.
+☁️ AWS Cloud & Architecture Highlights
+- Direct S3 Upload Offloading: Backend generates cryptographically signed S3 Presigned URLs, allowing clients to upload assets straight to Amazon S3 without saturating backend memory or network bandwidth.
+- Clean Architecture Principles: Strict separation of concerns across Domain, Application, Infrastructure, and API layers to ensure testability and maintainability.
+- Enterprise Resilience: Centralized Global Exception Middleware, standard API response wrappers, and secure environment configuration handling.
 
-## Local configuration
+---
 
-Development defaults are in `StudentFleaMarket.API/appsettings.Development.json`. Override secrets with environment variables or .NET user secrets:
+## 🔐 Feature 1 — Authentication & Authorization Profile
 
-```powershell
-dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Port=5432;Database=StudentFleaMarketDb;Username=postgres;Password=<password>" --project StudentFleaMarket.API
-dotnet user-secrets set "Jwt:Key" "<at-least-32-byte-secret>" --project StudentFleaMarket.API
+### 1.1 Cấu trúc mã nguồn
+
+| Layer | Thành phần mới |
+|-------|----------------|
+| **Domain** | `ApplicationUser` (mở rộng), `RefreshToken`, `VerificationCode` |
+| **Application** | `IAuthService` / `AuthService`, `IProfileService` / `ProfileService`, DTO + FluentValidation, `IRepository<T>`, `IJwtTokenService`, `IPasswordHasher`, `IEmailSender` |
+| **Infrastructure** | `EfRepository<T>`, `UserRepository`, `JwtTokenService`, `PasswordHasher` (PBKDF2), `EmailSender` (SMTP), DI extension |
+| **API** | `AuthController`, `ProfileController`, `ExceptionHandlingMiddleware`, `ValidationFilter`, JWT Bearer config, Swagger + Bearer auth |
+
+### 1.2 Cấu hình môi trường
+
+`appsettings.json` (Production) **bắt buộc** có `Jwt:SecretKey` dài ≥ 32 ký tự. Khuyến nghị dùng User Secrets:
+
+```bash
+cd StudentFleaMarket.API
+dotnet user-secrets init                       # đã có UserSecretsId trong csproj
+dotnet user-secrets set "Jwt:SecretKey" "<chuỗi-ngẫu-nhiên-64-ký-tự>"
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Port=5432;Database=StudentFleaMarketDb;Username=postgres;Password=<mật-khẩu>"
 ```
 
-Production must provide `ConnectionStrings__DefaultConnection` and `Jwt__Key`; no production secret is committed.
+Cấu hình email SMTP (mặc định `Email:LogOnly = true` → OTP được ghi ra log console):
 
-## Restore, build, and test
-
-On Windows, use the verification script. It builds with one MSBuild node to avoid package-assets cache contention:
-
-```powershell
-.\scripts\verify.ps1
+```bash
+dotnet user-secrets set "Email:LogOnly" "false"
+dotnet user-secrets set "Email:Host" "smtp.gmail.com"
+dotnet user-secrets set "Email:Port" "587"
+dotnet user-secrets set "Email:UseSsl" "true"
+dotnet user-secrets set "Email:Username" "<email-gửi>"
+dotnet user-secrets set "Email:Password" "<app-password>"
 ```
 
-Equivalent commands:
+### 1.3 Áp dụng migration
 
-```powershell
-dotnet tool restore
-dotnet msbuild StudentFleaMarket.sln /t:Restore /m:1
-dotnet msbuild StudentFleaMarket.sln /t:Build /m:1 /p:Restore=false
-dotnet test StudentFleaMarket.Tests\StudentFleaMarket.Tests.csproj --no-build --no-restore
-```
+> ⚠️ **API tự động áp dụng migration khi khởi động** (`Database.MigrateAsync()` trong `Program.cs`).
+> Migration còn thiếu sẽ được apply tự động trước khi seed — không cần chạy lệnh thủ công.
 
-## Database
-
-Create/update the PostgreSQL schema:
-
-```powershell
+```bash
 dotnet ef database update --project StudentFleaMarket.Infrastructure --startup-project StudentFleaMarket.API
 ```
 
-Create a new migration:
+> 💡 Lệnh trên **không đọc được user-secrets** nên sẽ báo `28P01: password authentication failed`.
+> Nếu cần chạy thủ công, hãy truyền connection string qua biến môi trường:
+>
+> ```powershell
+> $env:ConnectionStrings__DefaultConnection = "<connection string của bạn>"
+> dotnet ef database update --project StudentFleaMarket.Infrastructure --startup-project StudentFleaMarket.API
+> ```
+>
+> Lưu ý: khi migration chưa được apply, các API ghi vào bảng mới (`ExchangeRequests`, `Transactions`, `Payments`)
+> sẽ trả **HTTP 500 `INTERNAL_ERROR`** vì Postgres báo `42703: column "..." does not exist`.
 
-```powershell
-dotnet ef migrations add <MigrationName> --project StudentFleaMarket.Infrastructure --startup-project StudentFleaMarket.API --output-dir Persistence\Migrations
+Migration `AddAuthFeature` tạo bảng `RefreshTokens`, `VerificationCodes`, thêm cột `Users.CommonArea`, `Users.Dormitory` và giới hạn độ dài các cột profile.
+
+Migration `AddUsernameAndServiceAccounts` thêm cột `Users.Username` và bảng `ServiceAccounts`.
+
+Migration `AddItemSearchIndexes` thêm index hỗ trợ tìm kiếm & lọc nâng cao trên bảng `Items`: `Title`, `CategoryId`, `Price`, `Condition`, `Status`, `SellerId`, `CreatedAt`.
+
+Migration `AddItemTitleNormalized` thêm cột `Items.TitleNormalized` (bản bỏ dấu tiếng Việt của `Title`) + index. Cột này cho phép tìm kiếm **không phân biệt dấu**: `?keyword=sach` khớp "Sách", `?keyword=lap trinh` khớp "Lập trình".
+
+Migration `AddSellerApproval` thêm các cột quản lý quyền bán trên bảng `Users`: `SellerStatus`, `SellerRequestedAt`, `SellerApprovedAt`, `SellerApprovedByUserId`, `SellerRejectionReason`. User mới đăng ký có `SellerStatus = 0` (chưa được cấp quyền bán).
+
+Migration `AddAdminBanUser` thêm các cột quản lý cấm tài khoản trên bảng `Users`: `BanReason`, `BannedByUserId`, `BannedAt`, `UnbannedAt`.
+
+Migration `AddAdminRoleGrant` thêm các cột theo dõi việc cấp quyền quản trị trên bảng `Users`: `RoleGrantedByUserId`, `RoleGrantedAt`, `RoleRevokedAt`.
+
+> Migration `RemoveAdminRoleGrant` **xoá lại** 3 cột trên (vì dự án đã bỏ tính năng cấp / gỡ quyền quản trị).
+
+Migration `AddTradingFeature` thêm cột `Transactions.CancelReason`, cột `ExchangeRequests.Note` + `ExchangeRequests.ResponseNote`, và index cho `Transactions` / `Payments` / `ExchangeRequests`.
+
+Migration `AddItemCode` thêm cột `Items.ItemCode` (8 ký tự, unique) — mã hàng cho người dùng, kèm backfill tự sinh mã cho toàn bộ tin đăng đã có. Xem [1.7 Mã hàng (ItemCode)](#17-mã-hàng-itemcode).
+
+> Không có PostgreSQL/Docker trên máy? Bật `"UseInMemoryDatabase": true` trong `appsettings.Development.json` để chạy thử nhanh (dữ liệu không persist).
+
+### 1.3.1 Dữ liệu demo (seed mẫu)
+
+Khi chạy ở môi trường **Development**, API tự động nạp dữ liệu mẫu để test nhanh các chức năng tìm kiếm / đăng bán / gỡ bán.
+
+**Tài khoản demo** (mật khẩu chung: `123456`, email đã xác thực sẵn — không cần OTP):
+
+| Username | Email | Họ tên | Vai trò |
+|----------|-------|--------|---------|
+| `minh` | `minh@sv.edu.vn` | Nguyễn Minh | Sinh viên — chủ nhiều tin nhất |
+| `linh` | `linh@sv.edu.vn` | Trần Linh | Sinh viên |
+| `tu` | `tu@sv.edu.vn` | Lê Tu | Sinh viên |
+| `admin` | `admin@sv.edu.vn` | Quản trị viên | Admin — mật khẩu `admin123` |
+
+**Dữ liệu mẫu**: 25 tin đăng trải đều 9 danh mục, ưu tiên các tình huống để test:
+- Nhiều mức giá (0đ tặng → 5.000.000đ) và độ mới khác nhau
+- Có tin cho phép đổi đồ (`exchangeOnly=true`)
+- Có tin ở nhiều địa điểm khác nhau (`KTX Khu A/B/C`, `Thư viện`, `Sân vận động`…)
+- Có tin ở các trạng thái: **đang bán**, **đã đặt**, **đã bán**, **đã gỡ** (soft delete) → test lọc `statuses`
+- 10 lượt yêu thích → test `sortBy=most_favorited`
+
+**Cấu hình** (trong `appsettings.Development.json`):
+
+| Key | Mặc định | Ý nghĩa |
+|-----|----------|----------|
+| `SeedDemoData` | `true` (Development) | Bật/tắt dữ liệu demo. Bắt buộc `true` nếu muốn dùng ở Production |
+| `SkipDemoDataSeed` | `false` | Đặt `true` để tắt demo ở Development |
+| `SkipDatabaseSeed` | `false` | Tắt toàn bộ seed (kể cả admin + danh mục) |
+
+> ✅ **Idempotent** — chạy lại bao nhiêu lần cũng không nhân bản dữ liệu (đã kiểm chứng: restart 2 lần, số tin vẫn là 25, `sellerId` không đổi).
+
+
+### 1.4 Danh sách API
+
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|-------|
+| POST | `/api/Auth/register` | – | Đăng ký tài khoản (email thường hoặc email trường). Tự động gửi OTP. **Không trả token** — phải xác thực email rồi mới đăng nhập |
+| POST | `/api/Auth/login` | – | Đăng nhập → Access Token + Refresh Token. Nhận `identifier` (username **hoặc** email) |
+| POST | `/api/Auth/refresh` | – | Đổi token (rotation). Phát hiện dùng lại token cũ → thu hồi toàn bộ session |
+| POST | `/api/Auth/logout` | – | Thu hồi refresh token |
+| POST | `/api/Auth/send-verification-code` | – | Gửi OTP xác thực email (hạn 10 phút) |
+| POST | `/api/Auth/resend-verification-code` | – | Gửi lại OTP |
+| POST | `/api/Auth/verify-email` | – | Xác thực email bằng OTP 6 chữ số |
+| GET | `/api/Profile` | ✅ User/Admin | Lấy hồ sơ **của chính mình** (lấy `userId` từ token) |
+| PUT | `/api/Profile` | ✅ User/Admin | Cập nhật avatar, SĐT, trường, mã SV, khu vực, ký túc xá |
+| POST | `/api/Profile/change-password` | ✅ User/Admin | Đổi mật khẩu (thu hồi toàn bộ phiên đăng nhập) |
+| POST | `/api/ServiceAccounts` | ✅ Admin | Tạo tài khoản dịch vụ AI → sinh API key (hiển thị 1 lần) |
+| POST | `/api/ServiceAccounts/{id}/revoke` | ✅ Admin | Thu hồi API key của dịch vụ AI |
+
+**Tin đăng & Danh mục (Item & Catalog)**
+
+> 📂 **Tách 2 nhóm endpoint rõ ràng:**
+> - `api/Items/search` + `api/Items/...` → **TÌM KIẾM & XEM TIN** (public, không cần token)
+> - `api/Items/sell/...` → **ĐĂNG BÁN & QUẢN LÝ TIN CỦA MÌNH** (cần token)
+
+**Nhóm 1 — Tìm kiếm & xem tin (không cần token)**
+
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|-------|
+| GET | `/api/Items/search` | – | Tìm kiếm & lọc nâng cao (keyword, danh mục, giá, độ mới, trạng thái, đổi đồ, địa điểm, người bán, sắp xếp, phân trang) |
+| GET | `/api/Items/categories` | – | Danh sách danh mục kèm số lượng tin đang bán |
+| GET | `/api/Items/{id}` | – | Chi tiết tin đăng (kèm ảnh, người bán, số lượt yêu thích) |
+| GET | `/api/Items/slug/{slug}` | – | Chi tiết tin đăng theo slug (URL thân thiện) |
+| GET | `/api/Items/code/{code}` | – | Chi tiết tin đăng theo **mã hàng** (`ItemCode`, 8 ký tự A-Z0-9, không phân biệt hoa thường) |
+| GET | `/api/Items/seller/{sellerId}` | – | Tin đăng của một người bán |
+
+**Nhóm 2 — Đăng bán & quản lý tin của mình (cần token)**
+
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|-------|
+| POST | `/api/Items/sell` | ✅ User/Admin | Đăng tin bán đồ cũ. Giá `0` = tặng miễn phí. **Cần quyền bán** (`SellerStatus = Approved`) |
+| PUT | `/api/Items/sell/{id}` | ✅ User/Admin | Cập nhật tin đăng (chỉ chủ tin). **Cần quyền bán** (`SellerStatus = Approved`) |
+| DELETE | `/api/Items/sell/{id}` | ✅ User/Admin | Gỡ tin đăng (soft delete — chủ tin hoặc Admin) |
+| GET | `/api/Items/sell/mine` | ✅ User/Admin | Tin đăng của chính mình (gồm cả tin đã gỡ / đã bán) |
+
+**Nhóm 3 — Yêu thích (Wishlist)**
+
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|-------|
+| GET | `/api/Favorites` | ✅ User/Admin | Danh sách yêu thích (Wishlist) của chính mình |
+| POST | `/api/Favorites/{itemId}` | ✅ User/Admin | Thêm vào yêu thích (idempotent) |
+| DELETE | `/api/Favorites/{itemId}` | ✅ User/Admin | Xóa khỏi yêu thích |
+| POST | `/api/Favorites/{itemId}/toggle` | ✅ User/Admin | Đảo trạng thái yêu thích (nút "heart" một chạm) |
+
+**Nhóm 4 — Quyền bán hàng (Seller) — phía người dùng**
+
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|-------|
+| GET | `/api/Seller/status` | ✅ User/Admin | Trạng thái quyền bán của chính mình (`canSell` = đã được phép đăng tin chưa) |
+| POST | `/api/Seller/request` | ✅ User/Admin | Gửi yêu cầu trở thành người bán (chờ Admin duyệt). Có thể gửi lại nếu trước đó bị từ chối |
+| POST | `/api/Seller/request/cancel` | ✅ User/Admin | Hủy yêu cầu đang chờ duyệt |
+
+**Nhóm 5 — Admin duyệt người bán**
+
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|-------|
+| GET | `/api/Admin/seller-requests` | ✅ Admin | Danh sách yêu cầu trở thành người bán. Lọc `?status=1` (chờ duyệt) / `2` (đã duyệt) / `3` (bị từ chối) |
+| POST | `/api/Admin/seller-requests/{userId}/approve` | ✅ Admin | Cấp quyền đăng bán cho tài khoản |
+| POST | `/api/Admin/seller-requests/{userId}/reject` | ✅ Admin | Từ chối yêu cầu (body: `{ "reason": "..." }`) |
+| POST | `/api/Admin/seller-requests/{userId}/revoke` | ✅ Admin | Thu hồi quyền bán đã cấp |
+
+**Nhóm 6 — Admin quản lý & cấm tài khoản**
+
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|-------|
+| GET | `/api/Admin/users` | ✅ Admin | Danh sách tài khoản. Lọc `?status=1` (Hoạt động) / `2` (Chưa kích hoạt) / `3` (Đã bị cấm), tìm `?keyword=` (họ tên/email/username) |
+| GET | `/api/Admin/users/{userId}` | ✅ Admin | Chi tiết tài khoản |
+| POST | `/api/Admin/users/{userId}/ban` | ✅ Admin | **Cấm tài khoản** (body: `{ "reason": "..." }`) |
+| POST | `/api/Admin/users/{userId}/unban` | ✅ Admin | **Gỡ cấm** — tài khoản hoạt động trở lại |
+
+> ℹ️ Dự án **không có** API cấp / gỡ quyền **Admin**. Vai trò Admin được gán trực tiếp trong DB
+> (tài khoản `admin` mặc định được seed khi khởi tạo) → không có đường leo thang quyền qua API.
+>
+> ℹ️ Riêng vai trò **Moderator** thì **có** API cấp / thu hồi (`/api/Admin/moderators`) —
+> vì Moderator là cấp dưới Admin, hướng cấp quyền đi từ cao xuống thấp nên không tạo đường leo thang quyền.
+
+### 1.4.1 Vai trò & cách đăng nhập
+
+Có **4 vai trò** (lưu trong cột `Users."Role"`):
+
+| Role | Giá trị | Đăng nhập bằng | Ghi chú |
+|------|---------|----------------|---------|
+| **User** | `0` | Email (và username nếu đã đặt) | Đăng ký tự do qua `/api/Auth/register` |
+| **Admin** | `1` | Email (và username nếu đã đặt) | Seed sẵn: `admin` / `admin123` — email `admin@sv.edu.vn` |
+| **AiService** | `2` | **API key** (header `X-Api-Key`) | Dịch vụ AI: kiểm duyệt, gợi ý sản phẩm… Không đăng nhập bằng email/password |
+| **Moderator** | `3` | Email (và username nếu đã đặt) | Kiểm duyệt viên — chia sẻ công việc với Admin. Seed sẵn: `moderator` / `moderator123` |
+
+> 🔒 **Tên vai trò** dùng cho `[Authorize(Roles = "...")]` nằm ở **một nguồn duy nhất**: `RoleNames` (Domain/Common/RoleNames.cs).
+> Trước đây logic này bị nhân bản ở 4 nơi → dễ quên khi thêm role mới.
+
+**Username** là tùy chọn khi đăng ký:
+- Có `username` → đăng nhập được bằng **cả username lẫn email** (`admin` hoặc `admin@sv.edu.vn`).
+- Bỏ trống → tài khoản **chỉ** đăng nhập được bằng email.
+- Quy tắc: 3–30 ký tự, chỉ gồm chữ / số / `.` / `_`, **duy nhất toàn hệ thống**.
+- Lưu lowercase trong DB → đăng nhập không phân biệt hoa thường.
+
+Tài khoản dịch vụ AI nằm ở bảng riêng `ServiceAccounts` — **không** có email/password, chỉ có API key (lưu dạng hash SHA-256).
+
+#### 🛡 Moderator — kiểm duyệt viên (chia sẻ công việc với Admin)
+
+`Moderator` (`Role = 3`) là **nhân viên trực**, tồn tại để chia sẻ công việc với Admin khi Admin bận.
+
+**Phân tầng quyền** (nguồn sự thật: `StaffPermission` — Application/Common/Helpers/StaffPermission.cs):
+
+| Hành động | Admin | Moderator |
+|-----------|:-----:|:--------:|
+| Duyệt / từ chối / thu hồi quyền bán | ✅ | ✅ |
+| Cấm / gỡ cấm tài khoản **thường** | ✅ | ✅ |
+| Gỡ tin đăng vi phạm (tin của người khác) | ✅ | ✅ |
+| Đăng tin bán (không cần xin duyệt) | ✅ | ✅ |
+| Cấm / gỡ cấm tài khoản **Moderator** | ✅ | ❌ |
+| Cấm / gỡ cấm tài khoản **Admin** | ❌ | ❌ |
+| Cấp / thu hồi role kiểm duyệt viên | ✅ | ❌ |
+| Quản lý tài khoản dịch vụ AI | ✅ | ❌ |
+
+**Quy tắc bất di bất dịch:**
+- **Không ai** cấm được tài khoản Admin → `400 ADMIN_CANNOT_BE_BANNED`.
+- **Chỉ Admin** cấm được tài khoản Moderator → `400 MODERATOR_CANNOT_BE_BANNED`.
+- **Moderator không cấp/thu hồi role được** → `403 FORBIDDEN` (chống leo thang quyền).
+- **Hướng cấp quyền luôn đi từ cao xuống thấp**: Admin → Moderator → User.
+
+**API quản lý kiểm duyệt viên** (chỉ Admin):
+
+| Method | Endpoint | Mô tả |
+|--------|----------|-------|
+| `GET` | `/api/Admin/moderators?page=1&pageSize=20` | Danh sách kiểm duyệt viên |
+| `POST` | `/api/Admin/moderators/{userId}` | Cấp role kiểm duyệt viên (body tuỳ chọn: `{ "note": "..." }`) |
+| `DELETE` | `/api/Admin/moderators/{userId}` | Thu hồi role kiểm duyệt viên (về lại User thường) |
+
+> ✅ **Hiệu lực tức thì** — `RoleSyncMiddleware` tra `Role` từ DB mỗi request → tài khoản vừa được cấp quyền **không cần đăng nhập lại**.
+> Mọi thao tác cấp / thu hồi đều ghi vết (`RoleGrantedByUserId`, `RoleGrantedAt`, `RoleRevokedAt`).
+
+**Mã lỗi riêng của Moderator:**
+
+| Mã | HTTP | Ý nghĩa |
+|----|------|---------|
+| `MODERATOR_CANNOT_BE_BANNED` | 400 | Moderator cố cấm tài khoản Moderator khác |
+| `ADMIN_CANNOT_BE_BANNED` | 400 | Cố cấm tài khoản Admin |
+| `MODERATOR_ALREADY_ASSIGNED` | 409 | Tài khoản đã là kiểm duyệt viên |
+| `MODERATOR_ALREADY_CAN_SELL` | 400 | Không cần cấp quyền bán cho Moderator |
+| `USER_IS_NOT_MODERATOR` | 400 | Thu hồi role cho tài khoản không phải Moderator |
+
+#### 🛒 Seller — "người bán" là NĂNG LỰC, không phải vai trò riêng
+
+`Role` chỉ có 3 giá trị ở trên. Việc "được phép đăng bán" được quản lý **riêng** bằng cột `Users."SellerStatus"`:
+
+| SellerStatus | Giá trị | Ý nghĩa | Có đăng bán được? |
+|--------------|----------|---------|-------------------|
+| **None** | `0` | Chưa đăng ký bán (mặc định khi đăng ký tài khoản) | ❌ `403 SELLER_NOT_APPROVED` |
+| **Pending** | `1` | Đã gửi yêu cầu, đang chờ Admin duyệt | ❌ `403 SELLER_REQUEST_PENDING` |
+| **Approved** | `2` | Được Admin / Moderator cấp quyền | ✅ |
+| **Rejected** | `3` | Bị Admin / Moderator từ chối (kèm lý do) | ❌ `403 SELLER_REQUEST_REJECTED` |
+
+**Tại sao tách khỏi `Role`?**
+- Người bán **vẫn là `User`** → vẫn mua, yêu thích, xem hồ sơ, bình thường. Chỉ chức năng **đăng tin bán** bị khoá.
+- Không phải sửa lại JWT hay `[Authorize(Roles = ...)]` trên toàn bộ controller.
+- `UserStatus` (Active/Inactive/Banned) là **trạng thái tài khoản** — tách riêng, không trộn với `SellerStatus`.
+
+**Ai cần duyệt?** Cả **Admin** và **Moderator** đều duyệt được. Cả hai đều không cần xin — đã có sẵn toàn bộ quyền đăng tin.
+
+**Luật "được phép đăng bán" — nguồn sự thật duy nhất:** `SellerPermission` (Application/Common/Helpers/SellerPermission.cs).
+- `CanSell(user)` → `true` khi user là **Admin**, **Moderator** hoặc `SellerStatus = Approved`.
+- `EnsureCanSell(user)` → ném **403** với mã lỗi phù hợp từng trạng thái nếu không được phép.
+- Áp dụng cho **cả** `POST /api/Items/sell` (tạo tin) **và** `PUT /api/Items/sell/{id}` (sửa tin) — seller bị mất quyền bán không sửa được tin cũ.
+
+**Trạng thái trả về** trong mọi response `user` (login / register / profile):
+
+```json
+{
+  "role": 0,
+  "roleName": "User",
+  "sellerStatus": 2,
+  "sellerStatusName": "Đã được duyệt",
+  "canSell": true
+}
 ```
 
-## Run
+**Cột bổ sung trong DB** (migration `AddSellerApproval`):
+`Users.SellerStatus`, `Users.SellerRequestedAt`, `Users.SellerApprovedAt`, `Users.SellerApprovedByUserId`, `Users.SellerRejectionReason`.
 
-```powershell
-dotnet run --project StudentFleaMarket.API
+#### 🚫 Admin cấm tài khoản (ban)
+
+Trạng thái tài khoản nằm ở cột `Users."Status"` — **tách riêng** khỏi cả `Role` lẫn `SellerStatus`:
+
+| UserStatus | Giá trị | Ý nghĩa |
+|------------|---------|----------|
+| **Active** | `1` | Hoạt động bình thường (mặc định khi đăng ký) |
+| **Inactive** | `2` | Chưa kích hoạt (email chưa xác thực) |
+| **Banned** | `3` | **Bị Admin cấm** |
+
+**Khi Admin cấm một user, 4 việc xảy ra:**
+
+1. `Status = Banned` → đăng nhập bị chặn **401 `ACCOUNT_BANNED`** (kèm lý do trong message).
+2. **Toàn bộ refresh token bị thu hồi** → user không lấy được access token mới, buộc phải đăng nhập lại.
+3. **Quyền bán bị thu hồi** (nếu đang có) → tài khoản bị khoá không đăng tin mới được.
+4. Gửi email thông báo cho user.
+
+**Access token cũ vẫn còn hiệu lực — nhưng bị chặn ngay.**
+JWT là *stateless*, server không tra DB mỗi request, nên access token đã cấp vẫn dùng được tới khi hết hạn (30 phút). Vì vậy middleware `BannedUserBlockMiddleware` chạy sau `UseAuthentication` và tra trạng thái tài khoản mỗi request (chỉ `SELECT Status, "BanReason"` theo PK) → trả **403 `ACCOUNT_BANNED`** nếu tài khoản đã bị cấm.
+
+> ⚠️ **Admin không thể cấm/gỡ cấm tài khoản Admin** → `400 ADMIN_CANNOT_BE_BANNED` (tránh khoá nhầm hệ thống).
+
+**Cột bổ sung trong DB** (migration `AddAdminBanUser`):
+`Users.BanReason`, `Users.BannedByUserId`, `Users.BannedAt`, `Users.UnbannedAt`.
+
+#### 👑 Vai trò quản trị (Role = Admin)
+
+Dự án **không có API cấp / gỡ quyền quản trị** — vai trò Admin được gán **trực tiếp trong DB**.
+
+| Cách | Mô tả |
+|------|-------|
+| Tài khoản `admin` mặc định | Được `DatabaseSeeder` seed khi khởi tạo (`admin` / `admin123` — nên đổi mật khẩu sau lần đăng nhập đầu) |
+| Gán trực tiếp trong DB | `UPDATE "Users" SET "Role" = 1 WHERE "Email" = '...'` |
+
+> 🔒 **Lý do bỏ tính năng này:** không có đường leo thang quyền — Admin nào cũng không thể tự cấp quyền admin cho người khác, và không ai tự thu hồi được quyền admin của người khác.
+>
+> Cơ chế `RoleSyncMiddleware` **vẫn giữ nguyên** (tra `Role` từ DB mỗi request, chỉ `SELECT "Role"` theo PK → rất nhẹ) → nếu role được đổi trực tiếp trong DB thì hiệu lực **tức thì**, không cần đăng nhập lại.
+
+#### 🗑 Mất quyền bán → gỡ toàn bộ tin đăng
+
+Khi Admin **thu hồi quyền bán** (`POST /api/Admin/seller-requests/{userId}/revoke`), **từ chối yêu cầu** (`POST /api/Admin/seller-requests/{userId}/reject`) **hoặc cấm tài khoản** (`POST /api/Admin/users/{userId}/ban`):
+
+> **Toàn bộ tin đăng của người bán đó sẽ bị gỡ khỏi sàn** (soft delete hàng loạt: `IsDeleted = true`, `Status = Removed`).
+
+Lý do: nếu không, tin vẫn hiển thị công khai dù người bán không còn quyền đăng → vi phạm kỳ vọng của người mua.
+
+- Dùng **soft delete** (không xóa vật lý) → giữ lịch sử giao dịch & lượt yêu thích.
+- Tin đã gỡ **vẫn hiện** trong `/api/Items/sell/mine` của chủ tin (với trạng thái "Đã gỡ").
+- User vẫn có thể gửi yêu cầu trở thành người bán lại.
+
+### 1.5 Ví dụ request/response
+
+**Đăng ký**
+
+```json
+POST /api/Auth/register
+{
+  "fullName": "Nguyễn Văn A",
+  "email": "a.stu@sv.edu.vn",
+  "password": "Abc12345",
+  "confirmPassword": "Abc12345",
+  "phoneNumber": "0901234567",
+  "schoolName": "Đại học CNTT",
+  "studentCode": "SV001",
+  "username": "nguyenvana"
+}
 ```
 
-Swagger is enabled in Development. A ready-to-edit request collection is available in `StudentFleaMarket.API/StudentFleaMarket.API.http`.
+```json
+{
+  "message": "Đăng ký thành công. Vui lòng kiểm tra email để xác thực tài khoản trước khi đăng nhập.",
+  "user": {
+    "id": "8e653a10-1bf9-4b88-8e9f-49c492915a0c",
+    "fullName": "Nguyễn Văn A",
+    "email": "a.stu@sv.edu.vn",
+    "username": "nguyenvana",
+    "phoneNumber": "0901234567",
+    "avatarUrl": null,
+    "schoolName": "Đại học CNTT",
+    "studentCode": "SV001",
+    "commonArea": null,
+    "dormitory": null,
+    "role": 0,
+    "roleName": "User",
+    "status": 1,
+    "isEmailVerified": false,
+    "createdAt": "2026-10-23T07:47:59Z",
+    "updatedAt": "2026-10-23T07:47:59Z",
+    "sellerStatus": 0,
+    "sellerStatusName": "Chưa đăng ký bán",
+    "canSell": false
+  },
+  "verificationEmail": "a.stu@sv.edu.vn"
+}
+```
 
-Main endpoints:
+**Đăng nhập** (username hoặc email)
 
-- `GET /health`
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `GET /api/categories`
-- `GET /api/items`
-- `GET /api/items/{id}`
-- `POST /api/items` (JWT required)
-- `PUT /api/items/{id}` (JWT required, seller only)
-- `DELETE /api/items/{id}` (JWT required, seller only)
+```json
+POST /api/Auth/login
+{
+  "identifier": "admin",
+  "password": "admin123"
+}
+```
+
+**Tạo tài khoản dịch vụ AI** (chỉ Admin)
+
+```json
+POST /api/ServiceAccounts
+Authorization: Bearer <adminAccessToken>
+
+{
+  "name": "ai-moderation"
+}
+```
+
+```json
+{
+  "id": "83a1a3c3-19b1-44e6-b28c-885f8f67e6a3",
+  "name": "ai-moderation",
+  "apiKey": "sfm_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "keyPrefix": "sfm_xxxxxxxx",
+  "roleName": "AiService",
+  "expiresAt": null,
+  "createdAt": "2026-10-23T09:30:24Z"
+}
+```
+
+> API key chỉ hiển thị **đúng 1 lần** — DB chỉ lưu hash SHA-256.
+> Dịch vụ AI gọi API bằng header `X-Api-Key: sfm_...`.
+
+**Cập nhật hồ sơ**
+
+```json
+PUT /api/Profile
+Authorization: Bearer <accessToken>
+
+{
+  "fullName": "Nguyễn Văn A",
+  "phoneNumber": "0901234567",
+  "avatarUrl": "https://cdn.example.com/avatars/abc.png",
+  "schoolName": "Đại học CNTT",
+  "studentCode": "SV001",
+  "commonArea": "Khu A - Bắc",
+  "dormitory": "KTX A - Tầng 3, Phòng 302"
+}
+```
+
+**Luồng xin quyền bán hàng (Seller)**
+
+```json
+// 1. User xem trạng thái hiện tại
+GET /api/Seller/status
+Authorization: Bearer <userAccessToken>
+
+{
+  "sellerStatus": 0,
+  "sellerStatusName": "Chưa đăng ký bán",
+  "canSell": false,
+  "requestedAt": null,
+  "approvedAt": null,
+  "rejectionReason": null
+}
+```
+
+```json
+// 2. User gửi yêu cầu trở thành người bán
+POST /api/Seller/request
+Authorization: Bearer <userAccessToken>
+
+{
+  "note": "Tôi muốn bán đồ cũ, đã xác thực sinh viên."
+}
+
+{
+  "sellerStatus": 1,
+  "sellerStatusName": "Đang chờ duyệt",
+  "canSell": false,
+  "requestedAt": "2026-10-28T03:14:12Z",
+  "approvedAt": null,
+  "rejectionReason": null
+}
+```
+
+```json
+// 3. Admin xem danh sách chờ duyệt
+GET /api/Admin/seller-requests?status=1
+Authorization: Bearer <adminAccessToken>
+
+{
+  "items": [
+    {
+      "userId": "8e653a10-1bf9-4b88-8e9f-49c492915a0c",
+      "fullName": "Nguyễn Văn A",
+      "email": "a.stu@sv.edu.vn",
+      "username": "nguyenvana",
+      "schoolName": "Đại học CNTT",
+      "studentCode": "SV001",
+      "phoneNumber": "0901234567",
+      "sellerStatus": 1,
+      "sellerStatusName": "Đang chờ duyệt",
+      "requestedAt": "2026-10-28T03:14:12Z",
+      "approvedAt": null,
+      "rejectionReason": null,
+      "itemCount": 0
+    }
+  ],
+  "totalCount": 1,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 1,
+  "hasPrevious": false,
+  "hasNext": false
+}
+```
+
+```json
+// 4. Admin cấp quyền bán  (hoặc /reject với body { "reason": "..." })
+POST /api/Admin/seller-requests/8e653a10-1bf9-4b88-8e9f-49c492915a0c/approve
+Authorization: Bearer <adminAccessToken>
+
+{
+  "userId": "8e653a10-1bf9-4b88-8e9f-49c492915a0c",
+  "fullName": "Nguyễn Văn A",
+  "email": "a.stu@sv.edu.vn",
+  "sellerStatus": 2,
+  "sellerStatusName": "Đã được duyệt",
+  "requestedAt": "2026-10-28T03:14:12Z",
+  "approvedAt": "2026-10-28T03:14:50Z",
+  "rejectionReason": null,
+  "itemCount": 0
+}
+```
+
+> Từ bước 4 trở đi, user đã có thể gọi `POST /api/Items/sell` bình thường.
+
+**Admin cấm / gỡ cấm tài khoản**
+
+```json
+// 1. Admin xem danh sách tài khoản (lọc + tìm kiếm)
+GET /api/Admin/users?status=3&keyword=minh
+Authorization: Bearer <adminAccessToken>
+
+{
+  "items": [
+    {
+      "id": "8e653a10-1bf9-4b88-8e9f-49c492915a0c",
+      "fullName": "Nguyễn Minh",
+      "email": "minh@sv.edu.vn",
+      "username": "minh",
+      "schoolName": "Đại học Bách Khoa",
+      "studentCode": "BK22DS001",
+      "status": 3,
+      "statusName": "Đã bị cấm",
+      "isBanned": true,
+      "banReason": "Đăng tin đồ giả",
+      "bannedAt": "2026-10-28T03:45:00Z",
+      "unbannedAt": null,
+      "sellerStatus": 0,
+      "sellerStatusName": "Chưa đăng ký bán",
+      "canSell": false,
+      "isEmailVerified": true,
+      "itemCount": 10
+    }
+  ],
+  "totalCount": 1,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 1,
+  "hasPrevious": false,
+  "hasNext": false
+}
+```
+
+```json
+// 2. Admin cấm tài khoản
+POST /api/Admin/users/8e653a10-1bf9-4b88-8e9f-49c492915a0c/ban
+Authorization: Bearer <adminAccessToken>
+
+{
+  "reason": "Đăng tin đồ giả"
+}
+```
+
+```json
+// 3. Admin gỡ cấm
+POST /api/Admin/users/8e653a10-1bf9-4b88-8e9f-49c492915a0c/unban
+Authorization: Bearer <adminAccessToken>
+```
+
+> ℹ️ Dự án không có endpoint cấp / gỡ quyền **Admin**. Muốn thêm Admin mới thì gán role trực tiếp trong DB:
+> `UPDATE "Users" SET "Role" = 1 WHERE "Email" = 'email-cua-ban@example.com'`
+>
+> ℹ️ Muốn thêm **kiểm duyệt viên** thì dùng API: `POST /api/Admin/moderators/{userId}` (xem mục 1.4.2).
+
+### 1.6 Quy ước response lỗi
+
+```json
+{
+  "success": false,
+  "message": "Email hoặc mật khẩu không đúng.",
+  "code": "INVALID_CREDENTIALS"
+}
+```
+
+| HTTP | Code | Ý nghĩa |
+|------|------|---------|
+| 400 | `VALIDATION_ERROR` | Dữ liệu không hợp lệ (kèm mảng `errors` chi tiết) |
+| 400 | `INVALID_CODE` / `CODE_EXPIRED` / `CODE_ALREADY_USED` | Lỗi OTP |
+| 401 | `INVALID_CREDENTIALS` | Sai email / username / mật khẩu |
+| 401 | `INVALID_API_KEY` | API key của dịch vụ AI không hợp lệ / hết hạn / đã thu hồi |
+| 401 | `REFRESH_TOKEN_REVOKED` | Refresh token đã bị thu hồi / phát hiện dùng lại |
+| 401 | `UNAUTHORIZED` | Thiếu token, token không hợp lệ, hoặc chưa đăng nhập |
+| 401 | `TOKEN_EXPIRED` | Access token đã hết hạn — cần đăng nhập lại |
+| 401 | `INVALID_TOKEN_SIGNATURE` / `INVALID_TOKEN_AUDIENCE` / `INVALID_TOKEN_ISSUER` | Token sai chữ ký / sai issuer / sai audience |
+| 401 | `ACCOUNT_BANNED` / `ACCOUNT_INACTIVE` | Tài khoản bị khóa |
+| 403 | `FORBIDDEN` | Đã đăng nhập nhưng vai trò không được phép (ví dụ tài khoản AI gọi `/api/Profile`) |
+| 403 | `EMAIL_NOT_VERIFIED` | Chưa xác thực email — cần verify OTP trước khi đăng nhập |
+| 403 | `SERVICE_ACCOUNT_REQUIRES_API_KEY` | Tài khoản dịch vụ AI phải xác thực bằng API key |
+| 409 | `EMAIL_EXISTS` | Email đã đăng ký |
+| 409 | `USERNAME_EXISTS` | Tên tài khoản đã tồn tại |
+| 409 | `SERVICE_NAME_EXISTS` | Tên dịch vụ AI đã tồn tại |
+| 404 | `ITEM_NOT_FOUND` / `CATEGORY_NOT_FOUND` | Không tìm thấy tin đăng / danh mục |
+| 404 | `ITEM_CODE_NOT_FOUND` | Không tìm thấy tin đăng theo **mã hàng** (`ItemCode`) đã nhập |
+| 403 | `NOT_ITEM_OWNER` | Không phải chủ tin → không được sửa hoặc xóa tin đăng này |
+| 400 | `INVALID_PRICE_RANGE` | Giá tối thiểu lớn hơn giá tối đa |
+| 400 | `INVALID_SORT_BY` | Tiêu chí sắp xếp không hợp lệ |
+| 400 | `ITEM_ALREADY_SOLD` / `ITEM_NOT_AVAILABLE` | Tin đã bán / không còn khả dụng |
+| 403 | `AI_CANNOT_CREATE_ITEM` | Tài khoản dịch vụ AI không được đăng tin bán |
+| 403 | `SELLER_NOT_APPROVED` | Chưa được cấp quyền bán — cần gửi yêu cầu và chờ Admin duyệt |
+| 403 | `SELLER_REQUEST_PENDING` | Yêu cầu trở thành người bán đang chờ Admin duyệt |
+| 403 | `SELLER_REQUEST_REJECTED` | Yêu cầu trở thành người bán đã bị từ chối — có thể gửi lại |
+| 409 | `SELLER_REQUEST_PENDING` | Đã có yêu cầu đang chờ duyệt (khi gửi yêu cầu mới) |
+| 409 | `SELLER_ALREADY_APPROVED` | Tài khoản đã được cấp quyền bán |
+| 409 | `SELLER_ALREADY_REJECTED` | Yêu cầu này đã bị từ chối trước đó |
+| 400 | `ADMIN_ALREADY_CAN_SELL` | Tài khoản Admin không cần xin quyền bán |
+| 400 | `ADMIN_CANNOT_REJECT` / `ADMIN_CANNOT_REVOKE` | Không thể từ chối / thu hồi quyền bán của Admin |
+| 400 | `SELLER_USE_REVOKE_INSTEAD` | Tài khoản đang có quyền bán — hãy dùng thao tác **thu hồi** thay vì **từ chối** |
+| 400 | `BANNED_USER_CANNOT_BE_SELLER` | Không thể cấp quyền bán cho tài khoản đang bị cấm |
+| 400 | `SELLER_NO_PENDING_REQUEST` | Không có yêu cầu nào đang chờ duyệt để hủy |
+| 403 | `ACCOUNT_BANNED` | Tài khoản đã bị Admin cấm (middleware chặn cả access token cũ) |
+| 401 | `ACCOUNT_BANNED` | Đăng nhập bị chặn vì tài khoản đã bị cấm (message kèm lý do) |
+| 400 | `ADMIN_CANNOT_BE_BANNED` | Không thể cấm / gỡ cấm tài khoản Admin |
+| 400 | `USER_NOT_BANNED` | Tài khoản hiện không bị cấm (khi gỡ cấm) |
+| 409 | `USER_ALREADY_BANNED` | Tài khoản đã bị cấm trước đó |
+
+### 1.6.1 Tin đăng & Danh mục (Feature 2)
+
+**Đăng tin bán**
+
+```json
+POST /api/Items/sell
+{
+  "title": "Sách Lập trình C# cơ bản",
+  "categoryId": 1,
+  "description": "Sách mới 90%, không ghi chú",
+  "price": 50000,
+  "condition": 2,
+  "isExchangeEnabled": true,
+  "location": "KTX Khu A",
+  "imageUrls": ["https://cdn.example.com/items/abc-1.jpg"]
+}
+```
+
+| Trường | Bắt buộc | Quy tắc |
+|---------|-----------|---------|
+| `title` | ✅ | 3–200 ký tự |
+| `categoryId` | ✅ | Phải tồn tại trong `/api/Items/categories` |
+| `description` | ❌ | Tối đa 5000 ký tự |
+| `price` | ✅ | `0` = tặng miễn phí · không âm · ≤ 100.000.000 |
+| `condition` | ✅ | `1`=Mới 99% · `2`=Như mới · `3`=Tốt · `4`=Khá · `5`=Kém |
+| `isExchangeEnabled` | ❌ | Cho phép đổi đồ (mặc định `false`) |
+| `location` | ✅ | 2–255 ký tự — địa điểm gặp mặt trực tiếp |
+| `imageUrls` | ❌ | Tối đa 8 URL · ảnh đầu tiên là ảnh chính |
+
+> 🔑 Hệ thống **tự sinh mã hàng** (`itemCode`, 8 ký tự A-Z0-9) cho tin vừa đăng và trả về
+> trong response. Mã này **không đổi** khi sửa tin, và là thứ người dùng dùng để mua /
+> đổi đồ. Xem [1.7 Mã hàng (ItemCode)](#17-mã-hàng-itemcode).
+
+**Tìm kiếm & lọc nâng cao** — `GET /api/Items/search`
+
+| Query param | Kiểu | Mô tả |
+|-------------|------|-------|
+| `keyword` | string | Tìm trong tiêu đề — **không phân biệt dấu tiếng Việt & hoa thường** (`sach` khớp "Sách", `lap trinh` khớp "Lập trình") |
+| `categoryIds` | int[] | Lọc nhiều danh mục (`?categoryIds=1&categoryIds=5`) |
+| `categorySlug` | string | Lọc theo slug danh mục (`sach`, `dien-tu`…) |
+| `minPrice` / `maxPrice` | decimal | Khoảng giá |
+| `conditions` | int[] | Lọc theo độ mới (`?conditions=1&conditions=2`) |
+| `statuses` | int[] | Lọc theo trạng thái — mặc định chỉ `1` (Đang bán) |
+| `exchangeOnly` | bool | Chỉ hiện tin cho phép đổi đồ |
+| `location` | string | Lọc theo địa điểm (chứa) |
+| `sellerId` | guid | Lọc theo người bán |
+| `sortBy` | string | `newest` (mặc định) · `oldest` · `price_asc` · `price_desc` · `most_favorited` |
+| `page` / `pageSize` | int | Phân trang — `pageSize` tối đa 100, mặc định 20 |
+
+Response kèm metadata phân trang:
+
+```json
+{
+  "items": [ /* ... */ ],
+  "totalCount": 42,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 3,
+  "hasPrevious": false,
+  "hasNext": true
+}
+```
+
+> 💡 **Phân quyền tin đăng**
+> - Chỉ **chủ tin** được sửa / gỡ tin của mình → người khác nhận **403 `NOT_ITEM_OWNER`**.
+> - Tài khoản dịch vụ AI (`AiService`, xác thực bằng API key) **không được đăng tin** → **403 `AI_CANNOT_CREATE_ITEM`**.
+> - Tài khoản **chưa được Admin cấp quyền bán** → **403 `SELLER_NOT_APPROVED`** (xem mục 1.4.1).
+> - Gỡ tin là **soft delete** (`IsDeleted = true`) → tin vẫn nằm trong DB, chỉ ẩn khỏi truy vấn công khai.
+> - `/api/Items/sell/mine` của chủ tin **vẫn thấy** tin đã gỡ / đã bán (bỏ qua global query filter).
+> - Yêu thích là **duy nhất theo cặp `(userId, itemId)`** → thêm lại nhiều lần không tạo bản ghi trùng.
+
+### 1.6.2 Test nhanh với dữ liệu demo
+
+Sau khi chạy `dotnet run` ở Development, dữ liệu mẫu đã sẵn sàng. Chuỗi lệnh kiểm tra nhanh:
+
+```bash
+# 1. Tìm kiếm (không cần token) — tìm không dấu
+curl "http://localhost:5033/api/Items/search?keyword=sach"
+curl "http://localhost:5033/api/Items/search?categorySlug=dien-tu&minPrice=100000"
+curl "http://localhost:5033/api/Items/search?sortBy=most_favorited&exchangeOnly=true"
+
+# 2. Đăng nhập demo user
+curl -X POST http://localhost:5033/api/Auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"minh@sv.edu.vn","password":"123456"}'
+
+# 3. Đăng bán tin
+curl -X POST http://localhost:5033/api/Items/sell \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"May pha ca phe espresso","categoryId":9,"description":"May moi 95%","price":3500000,"condition":2,"isExchangeEnabled":true,"location":"KTX Khu A"}'
+
+# 4. Xem tin của mình (gồm cả tin đã gỡ / đã bán) — chú ý trường `itemCode`
+curl http://localhost:5033/api/Items/sell/mine -H "Authorization: Bearer <accessToken>"
+
+# 4b. Tra cứu tin đăng theo MÃ HÀNG (8 ký tự, không phân biệt hoa thường)
+curl http://localhost:5033/api/Items/code/<ma8KyTu>
+
+# 5. Gỡ bán
+curl -X DELETE http://localhost:5033/api/Items/sell/<itemId> -H "Authorization: Bearer <accessToken>"
+```
+
+**Luồng duyệt người bán (Seller) — test từ đầu:**
+
+```bash
+# 6. Admin thu hồi quyền bán của user minh -> về trạng thái "chưa được cấp quyền"
+curl -X POST http://localhost:5033/api/Admin/seller-requests/<minhUserId>/revoke \
+  -H "Authorization: Bearer <adminAccessToken>"
+
+# 7. User đăng bán -> bị chặn 403 SELLER_NOT_APPROVED
+curl -X POST http://localhost:5033/api/Items/sell \
+  -H "Authorization: Bearer <minhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"May pha ca phe espresso","categoryId":9,"price":3500000,"condition":2,"location":"KTX Khu A"}'
+
+# 8. User gửi yêu cầu trở thành người bán
+curl -X POST http://localhost:5033/api/Seller/request \
+  -H "Authorization: Bearer <minhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"note":"Toi muon ban do cu"}'
+
+# 9. Admin xem danh sách chờ duyệt
+curl "http://localhost:5033/api/Admin/seller-requests?status=1" \
+  -H "Authorization: Bearer <adminAccessToken>"
+
+# 10. Admin duyệt -> user đăng bán được
+curl -X POST http://localhost:5033/api/Admin/seller-requests/<minhUserId>/approve \
+  -H "Authorization: Bearer <adminAccessToken>"
+```
+
+**Kết quả mong đợi:**
+
+| Bước | Kết quả |
+|------|---------|
+| Tìm `keyword=sach` | 4 tin (Sách Lập trình C#, Sách Lập trình Python, Cho xin sách cũ, Cho xin túi đựng sách) |
+| Tìm `categorySlug=dien-tu` | 5 tin (bàn phím, chuột, tai nghe, sạc dự phòng, ổ cứng SSD) |
+| `GET /api/Items/sell/mine` của `minh` | 10 tin (8 đang bán + 1 đã gỡ + 1 đã bán) |
+| `POST /api/Items/sell` | `201` + slug tự sinh (`may-pha-ca-phe-espresso-xxxxxx`) |
+| `DELETE /api/Items/sell/{id}` | Tin biến mất khỏi tìm kiếm công khai, vẫn thấy trong `/sell/mine` với trạng thái "Đã gỡ" |
+| `DELETE` tin của người khác | `403 NOT_ITEM_OWNER` |
+| Bước 6 → `POST /api/Items/sell` | `403 SELLER_NOT_APPROVED` |
+| Bước 8 | `200` + `sellerStatus = 1` (Đang chờ duyệt), `canSell = false` |
+| Bước 9 | Danh sách chờ duyệt có 1 yêu cầu (Nguyễn Minh) |
+| Bước 10 | `sellerStatus = 2` (Đã được duyệt) → `POST /api/Items/sell` trả `201` |
+| `GET /api/Favorites` của user bị từ chối | Vẫn `200` — seller vẫn mua/yêu thích bình thường |
+
+> ⚠️ Demo user (`minh`, `linh`, `tu`) được seed với `SellerStatus = Approved` sẵn để luồng đăng bán không bị chặn. Muốn test luồng duyệt thì dùng bước 6 để thu hồi quyền trước.
+
+
+### 1.7 Mã hàng (ItemCode)
+
+Mỗi tin đăng có **hai định danh**, nằm cùng trên bảng `Items`:
+
+| Cột | Kiểu | Ai dùng | Ví dụ |
+|-----|------|---------|-------|
+| `Id` | `Guid` | **Database** — khoá chính + khoá ngoại ở 6 bảng khác (`ItemImages`, `Favorites`, `ExchangeRequests`, `Transactions`, `Conversations`, `Reports`) | `70ce3700-dcb4-4fff-95be-3cfcdd4399db` |
+| `ItemCode` | `string(8)` | **Người dùng** — mã hàng để giao tiếp với hệ thống (mua / đổi đồ) | `RNSCSLTM` |
+
+> 💡 **Vì sao cần cả hai?**
+> - `Id` = "CMND" của tin đăng trong hệ thống — ổn định, không lộ ra ngoài.
+> - `ItemCode` = mã hàng người dùng trao đổi — ngắn (8 ký tự), dễ đọc, dễ gõ, dễ nhớ.
+>
+> `ItemCode` là **business key**, không phải khoá ngoại. Mọi khoá ngoại vẫn trỏ tới `Id`
+> → thêm `ItemCode` **không phải sửa lại** bất kỳ khoá ngoại nào.
+
+**Đặc tính của `ItemCode`**
+
+| Đặc tính | Mô tả |
+|----------|-------|
+| Sinh tự động | Khi người bán đăng tin (`POST /api/Items/sell`) — user **không** tự chọn được |
+| Bất biến | **Không** đổi khi sửa tiêu đề / giá / ảnh. `Slug` thì có (được sinh lại theo tiêu đề) → không dùng `Slug` làm mã |
+| Định dạng | Đúng **8 ký tự**, chỉ gồm **chữ cái A-Z** và **chữ số 0-9** (36 ký tự, ~2.8 triệu tổ hợp) |
+| Không ký tự đặc biệt | Không có `-`, `_`, khoảng trắng → user gõ / đọc không bị nhầm |
+| Duy nhất toàn hệ thống | Unique index `IX_Items_ItemCode` |
+| Không phân biệt hoa thường | Gõ `rnscsltm` vẫn khớp `RNSCSLTM` (được chuẩn hóa trước khi truy vấn) |
+
+**Nơi dùng `ItemCode`**
+
+| Ngữ cảnh | Trường / Endpoint |
+|----------|------------------|
+| Gửi yêu cầu đổi đồ | `POST /api/ExchangeRequests` → `requestedItemCode`, `offeredItemCode` |
+| Mua trực tiếp | `POST /api/Transactions/purchase` → `itemCode` |
+| Tra cứu tin đăng | `GET /api/Items/code/{code}` |
+| Hiển thị | `ItemSummaryDto.itemCode`, `ItemDetailDto.itemCode`, `TradingItemDto.itemCode` |
+| Email thông báo | Mã hàng của cả 2 món đồ được in trong email (để 2 bên trao đổi mã khi gặp) |
+
+> ⚠️ `ItemCode` **đoán được** (8 ký tự, 36^8 tổ hợp nhưng không phải mã bí mật).
+> Vì vậy các luật quyền vẫn được kiểm tra đầy đủ: mã tồn tại nhưng không phải của bạn
+> → `403 NOT_ITEM_OWNER`; mã của tin đã gỡ → `404 ITEM_CODE_NOT_FOUND` (global query filter).
+
+---
+
+### 1.8 Ghi chú bảo mật
+
+- Mật khẩu băm bằng **PBKDF2** (ASP.NET Core Identity), không lưu plaintext.
+- Refresh token, OTP & API key chỉ lưu **SHA-256 hash** trong DB — lộ DB cũng không lấy được token dùng được.
+- Access token hạn 30 phút, refresh token 7 ngày, có **rotation** + phát hiện **token reuse** (thu hồi toàn bộ session).
+- OTP hạn 10 phút, tối đa 5 lần thử sai, mã cũ tự động bị vô hiệu khi gửi mã mới.
+- Đổi mật khẩu → thu hồi toàn bộ refresh token của user.
+- Response đăng nhập không lộ email nào tồn tại (thông báo chung).
+- **Đăng ký không cấp token**; **đăng nhập bị chặn (403 `EMAIL_NOT_VERIFIED`)** cho tới khi xác thực email qua OTP.
+- **Tài khoản dịch vụ AI** nằm ở bảng riêng `ServiceAccounts`, không có email/password; xác thực bằng header `X-Api-Key`; key có thể thu hồi và tự hết hạn.
+- **Quyền bán hàng (Seller) do Admin cấp**, không tự cấp khi đăng ký:
+  - User mới đăng ký → `SellerStatus = None` → `POST /api/Items/sell` bị **403 `SELLER_NOT_APPROVED`**.
+  - Chỉ endpoint `POST /api/Admin/seller-requests/{userId}/approve` (yêu cầu role `Admin` hoặc `Moderator`) mới mở khoá được.
+  - `SellerStatus` được kiểm tra **trực tiếp từ DB** (không nhúng vào JWT) → có hiệu lực **tức thì**, không cần đăng nhập lại sau khi được duyệt.
+  - Người bán vẫn là `Role = User` → mọi quyền mua / yêu thích / xem hồ sơ vẫn hoạt động bình thường.
+  - Admin **không cần** xin quyền bán (đã có sẵn toàn bộ quyền) — **Moderator cũng không cần** (được quyền bán nhờ vai trò).
+  - **Luật nằm trong `SellerPermission`** (nguồn sự thật duy nhất) → áp dụng cho **cả tạo tin lẫn sửa tin**:
+    - `POST /api/Items/sell` → seller chưa được duyệt bị **403**.
+    - `PUT /api/Items/sell/{id}` → seller đã mất quyền bán **không sửa được** tin cũ.
+  - **Từ chối yêu cầu / thu hồi quyền bán → gỡ toàn bộ tin đăng** của tài khoản đó khỏi sàn (soft delete hàng loạt).
+  - **Không tạo được trạng thái mâu thuẫn**: duyệt rồi muốn bỏ quyền thì dùng `revoke` (`400 SELLER_USE_REVOKE_INSTEAD` nếu dùng nhầm `reject`).
+  - **Không cấp quyền bán cho tài khoản đang bị cấm** → `400 BANNED_USER_CANNOT_BE_SELLER`.
+- **Admin cấm tài khoản (`POST /api/Admin/users/{userId}/ban`)**:
+  - `Status = Banned` → đăng nhập bị chặn **401 `ACCOUNT_BANNED`** kèm lý do.
+  - Toàn bộ **refresh token bị thu hồi** → không lấy được access token mới.
+  - **Quyền bán bị thu hồi** luôn (nếu đang có) → tài khoản bị khoá không đăng tin mới được.
+  - **Middleware `BannedUserBlockMiddleware`** chặn ngay cả access token cũ còn hiệu lực (JWT stateless) → **403 `ACCOUNT_BANNED`**. Chỉ `SELECT Status, "BanReason"` theo PK mỗi request.
+  - Admin **không thể** cấm/gỡ cấm tài khoản Admin → `400 ADMIN_CANNOT_BE_BANNED`.
+  - Gỡ cấm: `POST /api/Admin/users/{userId}/unban` → `Status = Active`, đăng nhập lại được ngay.
+  - **Cấm / thu hồi quyền bán → gỡ toàn bộ tin đăng của tài khoản khỏi sàn** (soft delete hàng loạt).
+- **Vai trò quản trị (Role = Admin) — KHÔNG có API cấp / gỡ quyền**:
+  - Vai trò được gán **trực tiếp trong DB** (tài khoản `admin` mặc định được seed khi khởi tạo).
+  - **Không có đường leo thang quyền**: không endpoint nào cho phép Admin tự cấp quyền admin cho người khác, hay tự thu hồi quyền admin của người khác.
+  - `RoleSyncMiddleware` vẫn giữ nguyên (tra `Role` từ DB mỗi request) → đổi role trực tiếp trong DB thì hiệu lực **tức thì**, không cần đăng nhập lại.
+- **Hồ sơ là tài nguyên riêng tư (private):** `/api/Profile` yêu cầu đăng nhập (`[Authorize(Roles = "User, Admin, Moderator")]`).
+  - `userId` **luôn lấy từ access token**, không nhận từ client → không thể xem/sửa hồ sơ người khác.
+  - Tài khoản dịch vụ AI (`AiService`, xác thực bằng API key) bị từ chối với **403 `FORBIDDEN`**.
+  - Gửi API key kèm request đã đăng nhập → JWT được ưu tiên, API key bị bỏ qua.
+- Swagger UI: http://localhost:&lt;port&gt;/swagger (Development) — nhấn **Authorize** để nhập token.
+
+> 💡 **Lỗi 401 khi dùng Swagger?** Hai nguyên nhân phổ biến nhất:
+>
+> **1. Dán sai token.** Trong ô Authorize chỉ dán **giá trị `accessToken`**, tuyệt đối:
+> - ❌ Không thêm chữ `Bearer` phía trước (Swagger tự thêm)
+> - ❌ Không dán nguyên cả JSON response của `/api/Auth/login`
+> - ❌ Không dán nhầm `refreshToken`
+>
+> Server ghi log lý do cụ thể trong console (`Token bi tu choi -> ...`), ví dụ `TOKEN_MALFORMED`, `INVALID_TOKEN_SIGNATURE`, `TOKEN_EXPIRED`.
+>
+> **2. `swagger.json` bị sai key của security requirement.** Khi đó Swagger UI **không gửi header `Authorization`** dù bạn đã Authorize thành công → 401 dù token hoàn toàn hợp lệ.
+> Kiểm tra nhanh: mở `/swagger/v1/swagger.json`, phần `"security"` cuối file phải là `"Bearer": []` — **không phải** `"Bearer#/components/securitySchemes/Bearer"`.
+> Nguyên nhân: `OpenApiSecuritySchemeReference(referenceId, hostDocument, externalResource)` — tham số thứ 3 là **externalResource**, truyền `"Bearer"` sẽ ghép thành `Bearer#/components/securitySchemes/Bearer`. Phải truyền `null`.
+
+### 1.9 Tài khoản mặc định (seed)
+
+| Username | Email | Mật khẩu | Vai trò |
+|----------|-------|----------|---------|
+| `admin` | `admin@sv.edu.vn` | `admin123` | Admin (đã xác thực email) |
+
+> ⚠️ **Đổi mật khẩu `admin123` sau lần đăng nhập đầu tiên.**
+> Seed chạy tự động khi khởi động API và là **idempotent** — không ghi đè dữ liệu đã có.
+> Bỏ qua seed: đặt `"SkipDatabaseSeed": true` trong `appsettings.Development.json`.
+
+> ℹ️ Khi bỏ seed demo + xóa dữ liệu cũ, các tài khoản mới đăng ký sẽ có `SellerStatus = None` và **phải được Admin duyệt** trước khi đăng tin bán.
+
+---
+
+## 🔄 Feature 3 — Trao đổi & Giao dịch (Trading & Transactions)
+
+### 3.1 Cấu trúc mã nguồn
+
+| Layer | Thành phần mới |
+|-------|----------------|
+| **Domain** | `ExchangeRequest`, `Transaction`, `Payment` (mở rộng: `Note`, `ResponseNote`, `CancelReason`) · Enum `PaymentMethod` (mới), `ExchangeRequestStatus`, `TransactionStatus`, `TransactionType`, `PaymentStatus` |
+| **Application** | `IExchangeRequestService` / `ExchangeRequestService`, `ITransactionService` / `TransactionService` · DTO + FluentValidation trong `DTOs/Trading/` · `IExchangeRequestRepository`, `ITransactionRepository`, `IPaymentRepository` |
+| **Infrastructure** | `ExchangeRequestRepository`, `TransactionRepository`, `PaymentRepository` · Index trong `AppDbContext` · DI extension · Seed dữ liệu giao dịch demo |
+| **API** | `ExchangeRequestsController` (Swagger tag 7), `TransactionsController` (Swagger tag 8) |
+
+### 3.2 Yêu cầu đổi đồ (Exchange Request)
+
+**Gửi yêu cầu** — `POST /api/ExchangeRequests`
+
+```json
+{
+  "requestedItemCode": "MA8CODE-cua-tin-ben-kia-muon-nhan",
+  "offeredItemCode":   "MA8CODE-cua-tin-cua-ban-dem-doi",
+  "additionalAmount": 50000,
+  "note": "Tôi có thể giao dịch lúc 17h ở KTX A"
+}
+```
+
+| Trường | Bắt buộc | Quy tắc |
+|---------|-----------|---------|
+| `requestedItemCode` | ✅ | **Mã hàng** (8 ký tự A-Z0-9) của tin **bên kia** muốn nhận — phải còn "Đang bán" **vã** có `isExchangeEnabled = true` |
+| `offeredItemCode` | ✅ | **Mã hàng** của tin **của chính bạn** dùng để đề nghị đổi lấy — phải còn "Đang bán" |
+| `additionalAmount` | ❌ | Tiền bù chênh lệch · ≥ 0 · ≤ 100.000.000 (mặc định `0`) |
+| `note` | ❌ | Ghi chú thương lượng · ≤ 1000 ký tự |
+
+> 💡 **Dùng MÃ HÀNG, không dùng Guid.**
+> Mỗi tin đăng có một `ItemCode` 8 ký tự (chữ cái + chữ số, ví dụ `RNSCSLTM`) do hệ thống tự sinh
+> khi đăng bán. Mã **không đổi** khi sửa tiêu đề. Mã không phân biệt hoa thường.
+> Xem chi tiết ở mục [1.7 Mã hàng (ItemCode)](#17-mã-hàng-itemcode).
+
+> 💡 **Ý nghĩa `RequestedItem` ⇄ `OfferedItem`**
+> - `RequestedItem` = món đồ của **người nhận yêu cầu** (người bán) — thứ bạn muốn nhận.
+> - `OfferedItem` = món đồ của **chính bạn** (người gửi) — thứ bạn đem đổi lấy.
+> - Người gửi = `Requester`; người nhận = chủ của `RequestedItem` → **chỉ người nhận mới accept / reject**.
+
+| Lỗi | HTTP | Mã lỗi |
+|-----|------|--------|
+| Mã hàng không tồn tại | 404 | `ITEM_CODE_NOT_FOUND` |
+| Mã sai định dạng (≠ 8 ký tự A-Z0-9) | 400 | `VALIDATION_ERROR` |
+| Món đồ đem đổi không phải của bạn | 403 | `NOT_ITEM_OWNER` |
+| Món đồ không bật cho phép đổi | 400 | `ITEM_NOT_EXCHANGEABLE` |
+| Món đồ đã có yêu cầu đang chờ | 409 | `ITEM_ALREADY_HAS_EXCHANGE_REQUEST` |
+
+**Phản hồi & hủy**
+
+| Endpoint | Ai được gọi | Tác dụng |
+|----------|-------------|----------|
+| `POST /api/ExchangeRequests/{id}/accept` | Chủ `RequestedItem` | Chấp nhận → `Status = Accepted` (2) |
+| `POST /api/ExchangeRequests/{id}/reject` | Chủ `RequestedItem` | Từ chối → `Status = Rejected` (3) |
+| `POST /api/ExchangeRequests/{id}/cancel` | Người gửi (`Requester`) | Hủy yêu cầu → `Status = Cancelled` (4) |
+
+Cả 3 endpoint đều nhận body tùy chọn `{ "note": "..." }` (ghi chú phản hồi, ≤ 1000 ký tự).
+
+**Truy vấn danh sách** — `GET /api/ExchangeRequests`
+
+| Query param | Kiểu | Mô tả |
+|-------------|------|-------|
+| `status` | int | `1`=Đang chờ phản hồi · `2`=Đã chấp nhận · `3`=Bị từ chối · `4`=Đã hủy · `5`=Đã hết hạn |
+| `direction` | string | `incoming` = người khác gửi cho bạn · `outgoing` = bạn đã gửi · bỏ trống = cả hai |
+| `page` / `pageSize` | int | Phân trang — `pageSize` tối đa 100, mặc định 20 |
+
+> 🔒 **Chỉ 2 bên liên quan được xem** yêu cầu đổi đồ → người thứ 3 nhận **403 `NOT_EXCHANGE_REQUEST_PARTICIPANT`**.
+
+### 3.3 Đơn giao dịch (Transaction) & Thanh toán
+
+**Khởi tạo đơn**
+
+| Endpoint | Loại | Mô tả |
+|----------|------|-------|
+| `POST /api/Transactions/purchase` | `Purchase` (1) | Mua trực tiếp — người mua chốt mua 1 tin đăng |
+| `POST /api/Transactions/exchange` | `Exchange` (2) | Hoàn tất đổi đồ — chỉ tạo được từ yêu cầu đã `Accepted` |
+
+```jsonc
+// POST /api/Transactions/purchase
+{
+  "itemCode": "MA8CODE-tin-dang-mua",      // mã hàng 8 ký tự A-Z0-9
+  "meetingLocation": "KTX Khu A - Cổng 1",  // bỏ trống -> lấy từ tin đăng
+  "paymentMethod": 1,                     // 1 = COD, 2 = BankTransfer
+  "amount": 75000                         // bỏ trống -> giá niêm yết của tin đăng
+}
+
+// POST /api/Transactions/exchange
+{
+  "exchangeRequestId": "guid-yeu-cau-da-accepted",
+  "meetingLocation": "KTX Khu A - Cổng 1",
+  "paymentMethod": 2,
+  "amount": 50000                         // bỏ trống -> AdditionalAmount của yêu cầu
+}
+```
+
+**Vòng đời đơn**
+
+```
+Pending (Đang xử lý) ──complete──> Completed (Hoàn thành)   → tin đánh dấu "Đã bán"
+        │
+        └──cancel────> Cancelled (Đã hủy giao dịch)            → tin trở lại "Đang bán"
+```
+
+| Endpoint | Ai được gọi | Tác dụng |
+|----------|-------------|----------|
+| `POST /api/Transactions/{id}/complete` | 1 trong 2 bên | Hoàn thành → `Status = Completed` (5) |
+| `POST /api/Transactions/{id}/cancel` | 1 trong 2 bên | Hủy → `Status = Cancelled` (4), lưu `cancelReason` |
+| `POST /api/Transactions/{id}/payment` | **Người trả tiền** | Xác nhận đã thanh toán → `Payment.Status = Paid` (2) |
+
+**Phương thức thanh toán** (`PaymentMethod`)
+
+| Giá trị | Tên | Mô tả |
+|---------|-----|-------|
+| `1` | **COD** | Trả tiền mặt khi gặp nhận đồ (mặc định — phù hợp sàn sinh viên) |
+| `2` | **BankTransfer** | Chuyển khoản qua QR ngân hàng / cổng thanh toán — hệ thống sinh `transactionRef` để đối soát |
+
+**Truy vấn danh sách** — `GET /api/Transactions`
+
+| Query param | Kiểu | Mô tả |
+|-------------|------|-------|
+| `status` | int | `1`=Đang xử lý · `2`=Đã thỏa thuận · `3`=Đã từ chối · `4`=Đã hủy · `5`=Đã hoàn thành |
+| `type` | int | `1`=Mua trực tiếp · `2`=Đổi đồ · `3`=Nhận miễn phí |
+| `direction` | string | `incoming` = đơn người khác mở với bạn · `outgoing` = đơn bạn mở |
+| `page` / `pageSize` | int | Phân trang |
+
+### 3.4 Quy tắc nghiệp vụ & mã lỗi
+
+| Quy tắc | Mã lỗi | HTTP |
+|---------|---------|------|
+| Đổi lấy chính món đồ của mình | `CANNOT_EXCHANGE_OWN_ITEM` | 400 |
+| Món đồ không bật "cho phép đổi đồ" | `ITEM_NOT_EXCHANGEABLE` | 400 |
+| Món đồ không còn "Đang bán" | `ITEM_NOT_AVAILABLE` / `OFFERED_ITEM_NOT_AVAILABLE` | 400 |
+| Đem đổi bằng tin **không phải của mình** | `NOT_ITEM_OWNER` | 403 |
+| Gửi trùng cặp (món đồ nhận, món đồ đổi) | `EXCHANGE_REQUEST_ALREADY_EXISTS` | 409 |
+| Món đồ đã có người khác đề nghị đổi | `ITEM_ALREADY_HAS_EXCHANGE_REQUEST` | 409 |
+| Người thứ 3 xem yêu cầu | `NOT_EXCHANGE_REQUEST_PARTICIPANT` | 403 |
+| Người không phải chủ tin accept / reject | `NOT_EXCHANGE_REQUEST_OWNER` | 403 |
+| Thao tác lại trên yêu cầu đã trả lời | `EXCHANGE_REQUEST_NOT_PENDING` | 409 |
+| Tạo đơn từ yêu cầu chưa được accept | `EXCHANGE_REQUEST_NOT_ACCEPTED` | 400 |
+| 1 yêu cầu → nhiều đơn | `TRANSACTION_ALREADY_EXISTS` | 409 |
+| Tin đã có đơn đang xử lý | `ITEM_ALREADY_HAS_TRANSACTION` | 409 |
+| Mua chính tin của mình | `CANNOT_BUY_OWN_ITEM` | 400 |
+| Người không phải trả tiền xác nhận thanh toán | `NOT_PAYMENT_PAYER` | 403 |
+| Thanh toán 2 lần | `PAYMENT_ALREADY_PAID` | 409 |
+| Hoàn thành / hủy đơn không ở trạng thái "Đang xử lý" | `TRANSACTION_NOT_PENDING` | 409 |
+| Người thứ 3 thao tác đơn | `NOT_TRANSACTION_PARTICIPANT` | 403 |
+
+> 🔒 **Tài khoản dịch vụ AI** (`AiService`) không được gửi yêu cầu đổi đồ hay tạo đơn → `403 AI_CANNOT_EXCHANGE` / `403 AI_CANNOT_TRANSACT`.
+
+### 3.5 Test nhanh với dữ liệu demo
+
+```bash
+# 1. Đăng nhập 2 demo user
+curl -X POST http://localhost:5033/api/Auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"identifier":"minh","password":"123456"}'
+
+# 2. Xem các yêu cầu đổi đồ đã nhận / đã gửi
+curl "http://localhost:5033/api/ExchangeRequests?direction=incoming" \
+  -H "Authorization: Bearer <linhAccessToken>"
+
+# 3. Chấp nhận yêu cầu (chỉ chủ tin được nhận)
+curl -X POST http://localhost:5033/api/ExchangeRequests/<id>/accept \
+  -H "Authorization: Bearer <linhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"note":"OK, giao lúc 17h KTX A"}'
+
+# 4. Tạo đơn hoàn tất đổi đồ (người gửi yêu cầu)
+curl -X POST http://localhost:5033/api/Transactions/exchange \
+  -H "Authorization: Bearer <minhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"exchangeRequestId":"<erId>","meetingLocation":"KTX Khu A","paymentMethod":2}'
+
+# 5. Xác nhận đã thanh toán (chỉ người trả tiền)
+curl -X POST http://localhost:5033/api/Transactions/<txId>/payment \
+  -H "Authorization: Bearer <minhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"transactionRef":"MB-99887766"}'
+
+# 6. Hoàn thành giao dịch -> tin đánh dấu "Đã bán"
+curl -X POST http://localhost:5033/api/Transactions/<txId>/complete \
+  -H "Authorization: Bearer <minhAccessToken>"
+
+# 7. Mua trực tiếp (COD)
+curl -X POST http://localhost:5033/api/Transactions/purchase \
+  -H "Authorization: Bearer <linhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"itemCode":"<ma8KyTu>","meetingLocation":"Canteen B","paymentMethod":1}'
+```
+
+**Kết quả mong đợi:**
+
+| Bước | Kết quả |
+|------|---------|
+| Seed | 1 yêu cầu đổi đồ "Đang chờ phản hồi" + 1 đơn mua trực tiếp "Đang xử lý" |
+| Bước 3 | `status = 2` (Đã được chấp nhận) |
+| Bước 4 | `201` + `type = 2` (Đổi đồ), `status = 1` (Đang xử lý), `payment.method = 2` |
+| Bước 5 | `payment.status = 2` (Đã thanh toán) — đơn **vẫn** "Đang xử lý" |
+| Bước 6 | `status = 5` (Đã hoàn thành) + tin đăng chuyển `status = 4` (Đã bán) |
+| Bước 6 (lại) | `409 TRANSACTION_NOT_PENDING` |
+| Bước 7 | `201` + `type = 1` (Mua trực tiếp), `payment.method = 1` (COD) |
+| Mua trùng một tin | `409 ITEM_ALREADY_HAS_TRANSACTION` |
+
+> 💡 Với đơn **đổi đồ**, khi hoàn thành thì **cả hai** món đồ đều chuyển sang `status = 4` (Đã bán) và món đồ được nhận **đổi chủ** sang người gửi yêu cầu — đúng nghĩa "đã trao đổi xong".
+
+---
+
+## 💬 Feature 4 — Trò chuyện Trực tiếp (Real-time Chat)
+
+Chat thương lượng **1-1** giữa người mua và người bán, xoay quanh **1 món đồ cụ thể**.
+Có lịch sử hội thoại, đánh dấu đã đọc (read receipt) và badge số tin chưa đọc — realtime qua **SignalR**.
+
+### 4.1 Cấu trúc mã nguồn
+
+| Layer | Thành phần mới |
+|-------|----------------|
+| **Domain** | `Conversation` (bổ sung `BuyerUnreadCount`, `SellerUnreadCount`), `Message` (bổ sung `ReadAt`) |
+| **Application** | `IChatService` / `ChatService`, `IChatRepository` / `IMessageRepository`, `ChatDtos` (kèm FluentValidation) |
+| **Infrastructure** | `ChatRepository`, `MessageRepository`, cấu hình index trong `AppDbContext`, DI extension |
+| **API** | `ChatController` (Swagger tag **10**), `ChatHub` (SignalR), `AddSignalR()` + `MapHub`, `JwtBearerEvents.OnMessageReceived` |
+
+### 4.2 Migration
+
+`AddChatFeature` — bổ sung:
+
+| Bảng | Thay đổi |
+|------|----------|
+| `Conversations` | `+ BuyerUnreadCount` (int, default 0), `+ SellerUnreadCount` (int, default 0) |
+| `Conversations` | `+ unique index (ItemId, BuyerId)` — **1 món đồ + 1 người mua = đúng 1 hội thoại** |
+| `Conversations` | `+ index (BuyerId, LastMessageAt)`, `+ index (SellerId, LastMessageAt)` — sort danh sách hội thoại |
+| `Messages` | `+ ReadAt` (timestamp, nullable) — hiển thị "đã xem lúc HH:mm" |
+| `Messages` | `+ index (ConversationId, SentAt)` — phân trang lịch sử chat |
+
+> ⚠️ **Index unique `(ItemId, BuyerId)` là bắt buộc** — thiếu nó thì bấm "Chat" nhiều lần sẽ tạo nhiều hội thoại (lịch sử vỡ + badge đếm sai).
+
+### 4.3 Danh sách API
+
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|-------|
+| POST | `/api/Chat/conversations` | ✅ | Mở / tạo hội thoại từ `itemId`. Body: `{ "itemId": "<guid>" }` |
+| GET | `/api/Chat/conversations` | ✅ | Danh sách hội thoại + `totalUnread` (badge toàn app) |
+| GET | `/api/Chat/conversations/{id}` | ✅ | Chi tiết hội thoại |
+| GET | `/api/Chat/conversations/{id}/messages` | ✅ | Lịch sử tin nhắn (phân trang, mới nhất trước) |
+| POST | `/api/Chat/conversations/{id}/messages` | ✅ | Gửi tin nhắn — **đường dự phòng** khi WebSocket lỗi |
+| POST | `/api/Chat/conversations/{id}/read` | ✅ | Đánh dấu đã đọc → reset badge |
+| GET | `/api/Chat/unread-count` | ✅ | Tổng số tin chưa đọc |
+
+### 4.4 Realtime (SignalR) — `/hubs/chat`
+
+**Xác thực:** browser **không** set được header `Authorization` khi mở WebSocket → token truyền qua **query string**:
+
+```
+ws://localhost:5033/hubs/chat?access_token=<jwt>
+```
+
+`JwtBearerEvents.OnMessageReceived` trong `Program.cs` đọc query `access_token` để xác thực.
+
+**Client → Server**
+
+| Method | Ý nghĩa |
+|--------|---------|
+| `JoinConversation(conversationId)` | Vào nhóm nhận tin của hội thoại (tự kiểm tra quyền tham gia) |
+| `LeaveConversation(conversationId)` | Rời nhóm (khi đóng màn hình chat) |
+| `SendMessage(conversationId, content)` | Gửi tin → lưu DB → đẩy realtime |
+| `MarkAsRead(conversationId)` | Đánh dấu đã đọc → reset badge → bên kia thấy "đã đọc" |
+| `Typing(conversationId)` | Báo "đang gõ" (không lưu DB) |
+
+**Server → Client**
+
+| Event | Payload | Khi nào bắn |
+|-------|---------|------------|
+| `ReceiveMessage` | `MessageDto` | Có tin nhắn mới |
+| `MessageRead` | `{ conversationId, byUserId, readAt }` | Đối tác đọc tin |
+| `ConversationUpdated` | `{ id, lastMessage, lastMessageAt }` | Preview hội thoại thay đổi |
+| `NotifyUnreadCount` | `{ totalUnread }` | Badge toàn app |
+| `UserTyping` | `{ conversationId, userId }` | Bên kia đang gõ |
+| `JoinedConversation` | Thông tin hội thoại | Vừa join nhóm |
+| `ChatError` | `{ conversationId, code, message }` | Lỗi nghiệp vụ (hiển thị rõ cho client) |
+
+**Nhóm (groups)**
+
+| Group | Ai ở trong | Dùng để |
+|-------|-----------|---------|
+| `conversation:{id}` | 2 bên của hội thoại | đẩy tin nhắn + trạng thái đã đọc |
+| `user:{userId}` | 1 người (mọi thiết bị) | đẩy tổng badge unread |
+
+### 4.5 Quy tắc nghiệp vụ & mã lỗi
+
+| Quy tắc | Mã lỗi | HTTP |
+|---------|---------|------|
+| Không chat với chính mình | `CANNOT_CHAT_WITH_SELF` | 400 |
+| Món đồ không còn "đang bán" → **không tạo được** hội thoại mới | `ITEM_NOT_AVAILABLE` | 400 |
+| Không phải 2 bên của hội thoại | `NOT_CONVERSATION_PARTICIPANT` | 403 |
+| Nội dung tin nhắn rỗng | `MESSAGE_CONTENT_EMPTY` | 400 |
+| Nội dung tin nhắn > 1000 ký tự | `MESSAGE_CONTENT_TOO_LONG` | 400 |
+| Tài khoản bị Admin cấm | `ACCOUNT_BANNED` | 403 |
+
+#### Điểm quan trọng về vòng đời hội thoại
+
+| Tình huống | Kết quả |
+|-----------|--------|
+| Bấm "Chat" nhiều lần với cùng 1 món đồ | Luôn trả về **cùng 1 hội thoại** (unique index) |
+| Món đồ bị gỡ / bán **sau khi** đã chat | Vẫn mở được, **vẫn nhắn tin được**; response có `isItemUnavailable = true` để UI hiện cảnh báo |
+| Món đồ bị gỡ / bán mà **chưa từng chat** | Không tạo được hội thoại mới → `400 ITEM_NOT_AVAILABLE` |
+| Lịch sử chat sau khi giao dịch xong | **Được giữ lại** (FK `Item` dùng `DeleteBehavior.Restrict`) |
+| Số tin chưa đọc | Đếm theo **hướng nhận**: `BuyerUnreadCount` = tin của Seller mà Buyer chưa đọc |
+
+> 💡 **Chat không tạo ra giao dịch.** Chat là kênh thương lượng (giá, hẹn giao); việc chốt đơn vẫn đi qua `ExchangeRequest` → `Transaction` sẵn có.
+
+### 4.6 Test nhanh với dữ liệu demo
+
+```bash
+# 1. Đăng nhập 2 demo user (người mua + người bán)
+curl -X POST http://localhost:5033/api/Auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"identifier":"minh","password":"123456"}'
+
+# 2. Mở hội thoại chat về 1 món đồ (ItemId lấy từ GET /api/Items/search)
+curl -X POST http://localhost:5033/api/Chat/conversations \
+  -H "Authorization: Bearer <minhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"itemId":"<itemId>"}'
+
+# 3. Gửi tin nhắn
+curl -X POST http://localhost:5033/api/Chat/conversations/<conversationId>/messages \
+  -H "Authorization: Bearer <minhAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"Chào bạn, món đồ còn không?"}'
+
+# 4. Xem danh sách hội thoại + badge số tin chưa đọc (đứng ở phía người bán)
+curl http://localhost:5033/api/Chat/conversations \
+  -H "Authorization: Bearer <linhAccessToken>"
+
+# 5. Đánh dấu đã đọc
+curl -X POST http://localhost:5033/api/Chat/conversations/<conversationId>/read \
+  -H "Authorization: Bearer <linhAccessToken>"
+```
+
+**Kết quả mong đợi:**
+
+| Bước | Kết quả |
+|------|---------|
+| Bước 2 | `200` + `conversationId`, `otherParty` = người bán, `viewerIsBuyer = true` |
+| Bước 2 (lại) | Cùng `conversationId` — không tạo trùng |
+| Bước 3 | `200` + `MessageDto` (`isRead = false`) |
+| Bước 4 | `totalUnread = 1` ở phía người bán; `unreadCount = 1` ở hội thoại đó |
+| Bước 5 | `markedCount = 1`, `totalUnread = 0`, các tin chuyển `isRead = true` + có `readAt` |
+| Người thứ 3 gọi vào hội thoại | `403 NOT_CONVERSATION_PARTICIPANT` |
+
+> 🔒 **Lưu ý bảo mật:** các middleware HTTP (`BannedUserBlockMiddleware`, `RoleSyncMiddleware`) **không** áp dụng cho WebSocket của SignalR — vì vậy `ChatHub.OnConnectedAsync` tự kiểm tra tài khoản bị cấm, và `ChatService` tự kiểm tra lại mỗi lần gửi tin.
+
+> 💡 Muốn đếm tin chưa đọc theo **tổng** (badge toàn app) dùng `GET /api/Chat/unread-count` hoặc lắng nghe event `NotifyUnreadCount` qua SignalR.
+
+
+---
+
+## 🖼️ Upload ảnh tin đăng (S3 presigned POST + Lambda ImageProcessor)
+
+- `POST /api/Items/sell/{id}/images/presign` — cần JWT, chỉ chủ tin. Body: `{ "files": [{ "fileName", "contentType", "sizeBytes" }] }`.
+  Chỉ nhận `image/jpeg`, `image/png`, `image/webp`. Mặc định tối đa 10 MB/ảnh và 8 ảnh/tin.
+- Response trả `uploadUrl` + `formFields`. Client append **toàn bộ** `formFields` vào `FormData`, append ảnh với key `file`,
+  rồi POST thẳng lên S3. Policy đã ký cố định object key, MIME type, dung lượng khai báo và thời hạn.
+- Ảnh gốc vào `raw/users/{userId}/items/{itemId}/{uploadId}.{ext}`. Lambda `StudentFleaMarket.ImageProcessor`
+  (trigger `ObjectCreated` trên `raw/`) tạo `large.webp` và `thumbnail.webp` trong `processed/items/{itemId}/{uploadId}/`.
+- `POST /api/Items/sell/{id}/images/confirm` — sau khi POST lên S3 thành công, gửi `{ "objectKeys": ["<objectKey từ presign>"] }`.
+  API kiểm tra key thuộc đúng user + tin, `HEAD` object trên S3 (tồn tại, đúng dung lượng), rồi ghi vào bảng `ItemImage`
+  với `ImageUrl = <base>/processed/items/{itemId}/{uploadId}/large.webp` (base = `CloudFrontBaseUrl`, hoặc LocalStack khi dev).
+  Ảnh đầu tiên thành ảnh chính nếu tin chưa có. Gọi lại với cùng key không tạo trùng. Response trả thêm `thumbnailUrl`.
+  Lambda xử lý bất đồng bộ nên `large.webp` có thể chưa có ngay vài giây sau khi confirm — FE nên retry/hiển thị placeholder.
+
+Cấu hình nằm trong section `MediaStorage`:
+
+| Môi trường | Thiết lập |
+|---|---|
+| Development | `appsettings.Development.json` trỏ LocalStack `http://localhost:4566`, bucket `student-market-local-images`, path-style. Client S3 dùng credential giả, không đọc AWS profile thật. |
+| AWS | Để trống `MediaStorage__ServiceUrl`, `MediaStorage__ForcePathStyle=false`, đặt `MediaStorage__BucketName`, `MediaStorage__Region`, `MediaStorage__CloudFrontBaseUrl`. Credential lấy từ default chain / execution role, **không** để access key trong appsettings. |
+
+> API sẽ không khởi động nếu `MediaStorage:BucketName` trống.
+
+Chạy LocalStack từ thư mục gốc workspace (`-SkipImagePipeline` nếu chỉ cần S3):
+
+```powershell
+.\aws\localstack\Initialize-LocalStack.ps1
+dotnet run --project .\student-flea-market-be\StudentFleaMarket.API --launch-profile http
+```
+
+Stack media khi deploy: `../aws/iac/media-pipeline.yaml` (build/lint bằng AWS SAM).

@@ -22,205 +22,96 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ConcurrencyStamp")
-                        .IsConcurrencyToken()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Name")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<string>("NormalizedName")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("NormalizedName")
-                        .IsUnique()
-                        .HasDatabaseName("RoleNameIndex");
-
-                    b.ToTable("Roles", (string)null);
-                });
-
-            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("ClaimType")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ClaimValue")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("RoleId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RoleId");
-
-                    b.ToTable("RoleClaims", (string)null);
-                });
-
-            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<System.Guid>", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("ClaimType")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ClaimValue")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("UserClaims", (string)null);
-                });
-
-            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<System.Guid>", b =>
-                {
-                    b.Property<string>("LoginProvider")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProviderKey")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProviderDisplayName")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("LoginProvider", "ProviderKey");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("UserLogins", (string)null);
-                });
-
-            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<System.Guid>", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("RoleId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("UserId", "RoleId");
-
-                    b.HasIndex("RoleId");
-
-                    b.ToTable("UserRoles", (string)null);
-                });
-
-            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<System.Guid>", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("LoginProvider")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Name")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Value")
-                        .HasColumnType("text");
-
-                    b.HasKey("UserId", "LoginProvider", "Name");
-
-                    b.ToTable("UserTokens", (string)null);
-                });
-
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<int>("AccessFailedCount")
-                        .HasColumnType("integer");
-
                     b.Property<string>("AvatarUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
-                    b.Property<string>("ConcurrencyStamp")
-                        .IsConcurrencyToken()
-                        .HasColumnType("text");
+                    b.Property<string>("BanReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("BannedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("BannedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CommonArea")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Dormitory")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
-                    b.Property<bool>("EmailConfirmed")
-                        .HasColumnType("boolean")
-                        .HasColumnName("IsEmailVerified");
-
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)");
 
-                    b.Property<bool>("LockoutEnabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTimeOffset?>("LockoutEnd")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("NormalizedEmail")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<string>("NormalizedUserName")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
+                    b.Property<bool>("IsEmailVerified")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
 
                     b.Property<string>("PhoneNumber")
-                        .HasColumnType("text");
-
-                    b.Property<bool>("PhoneNumberConfirmed")
-                        .HasColumnType("boolean");
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<int>("Role")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
                         .HasDefaultValue(0);
 
+                    b.Property<DateTime?>("RoleGrantedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RoleGrantedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RoleRevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("SchoolName")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
-                    b.Property<string>("SecurityStamp")
-                        .HasColumnType("text");
+                    b.Property<DateTime?>("SellerApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("SellerApprovedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SellerRejectionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("SellerRequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SellerStatus")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
 
                     b.Property<int>("Status")
                         .ValueGeneratedOnAdd()
@@ -231,31 +122,31 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<bool>("TwoFactorEnabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTime?>("UnbannedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("UserName")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Username")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("NormalizedEmail")
-                        .IsUnique()
-                        .HasDatabaseName("EmailIndex");
+                    b.HasIndex("BannedByUserId");
 
-                    b.HasIndex("NormalizedUserName")
-                        .IsUnique()
-                        .HasDatabaseName("UserNameIndex");
+                    b.HasIndex("Email")
+                        .IsUnique();
 
-                    b.HasIndex("StudentCode")
-                        .IsUnique()
-                        .HasFilter("\"StudentCode\" IS NOT NULL");
+                    b.HasIndex("RoleGrantedByUserId");
 
-                    b.ToTable("Users", (string)null);
+                    b.HasIndex("SellerApprovedByUserId");
+
+                    b.HasIndex("Username")
+                        .IsUnique();
+
+                    b.ToTable("Users");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Category", b =>
@@ -266,12 +157,13 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -279,7 +171,9 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)");
 
                     b.Property<int>("Order")
-                        .HasColumnType("integer");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
 
                     b.Property<string>("Slug")
                         .IsRequired()
@@ -288,10 +182,12 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("IsActive");
+
                     b.HasIndex("Slug")
                         .IsUnique();
 
-                    b.ToTable("Categories");
+                    b.ToTable("Category");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Conversation", b =>
@@ -302,6 +198,11 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("BuyerId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("BuyerUnreadCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -318,14 +219,19 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("SellerId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("SellerUnreadCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.HasKey("Id");
 
-                    b.HasIndex("ItemId");
+                    b.HasIndex("BuyerId", "LastMessageAt");
 
-                    b.HasIndex("SellerId");
-
-                    b.HasIndex("BuyerId", "SellerId", "ItemId")
+                    b.HasIndex("ItemId", "BuyerId")
                         .IsUnique();
+
+                    b.HasIndex("SellerId", "LastMessageAt");
 
                     b.ToTable("Conversations");
                 });
@@ -336,17 +242,18 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<decimal?>("AdditionalAmount")
+                    b.Property<decimal>("AdditionalAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
 
-                    b.Property<Guid?>("OfferedItemId")
+                    b.Property<Guid>("OfferedItemId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("RequestedItemId")
@@ -358,12 +265,16 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("RespondedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ResponseNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ExpiresAt");
+                    b.HasIndex("CreatedAt");
 
                     b.HasIndex("OfferedItemId");
 
@@ -373,12 +284,7 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("ExchangeRequests", t =>
-                        {
-                            t.HasCheckConstraint("CK_ExchangeRequests_AdditionalAmount", "\"AdditionalAmount\" IS NULL OR \"AdditionalAmount\" >= 0");
-
-                            t.HasCheckConstraint("CK_ExchangeRequests_DifferentItems", "\"OfferedItemId\" IS NULL OR \"OfferedItemId\" <> \"RequestedItemId\"");
-                        });
+                    b.ToTable("ExchangeRequests");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Favorite", b =>
@@ -422,14 +328,35 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(5000)
-                        .HasColumnType("character varying(5000)");
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("HiddenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("HiddenByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("HiddenReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<bool>("IsExchangeEnabled")
                         .HasColumnType("boolean");
+
+                    b.Property<bool>("IsHidden")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("ItemCode")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
 
                     b.Property<string>("Location")
                         .IsRequired()
@@ -456,6 +383,10 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("TitleNormalized")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -463,7 +394,16 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CategoryId");
 
+                    b.HasIndex("Condition");
+
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("HiddenByUserId");
+
+                    b.HasIndex("ItemCode")
+                        .IsUnique();
+
+                    b.HasIndex("Price");
 
                     b.HasIndex("SellerId");
 
@@ -472,14 +412,11 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status");
 
-                    b.HasIndex("SellerId", "Status");
+                    b.HasIndex("Title");
 
-                    b.HasIndex("CategoryId", "Status", "CreatedAt");
+                    b.HasIndex("TitleNormalized");
 
-                    b.ToTable("Items", t =>
-                        {
-                            t.HasCheckConstraint("CK_Items_Price_NonNegative", "\"Price\" >= 0");
-                        });
+                    b.ToTable("Items");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.ItemImage", b =>
@@ -507,8 +444,7 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ItemId", "Order")
-                        .IsUnique();
+                    b.HasIndex("ItemId");
 
                     b.ToTable("ItemImages");
                 });
@@ -519,19 +455,21 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("BuyerId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Content")
                         .IsRequired()
-                        .HasMaxLength(5000)
-                        .HasColumnType("character varying(5000)");
+                        .HasColumnType("text");
 
                     b.Property<Guid>("ConversationId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsRead")
                         .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("SenderId")
                         .HasColumnType("uuid");
@@ -541,13 +479,7 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BuyerId");
-
-                    b.HasIndex("IsRead");
-
                     b.HasIndex("SenderId");
-
-                    b.HasIndex("SentAt");
 
                     b.HasIndex("ConversationId", "SentAt");
 
@@ -560,16 +492,21 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<int>("Amount")
-                        .HasColumnType("integer");
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("PaymentUrl")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
+                    b.Property<int>("Method")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("PayerId")
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -584,6 +521,8 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("PayerId");
+
                     b.HasIndex("Status");
 
                     b.HasIndex("TransactionId")
@@ -591,10 +530,47 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TransactionRef");
 
-                    b.ToTable("Payments", t =>
-                        {
-                            t.HasCheckConstraint("CK_Payments_Amount", "\"Amount\" >= 0");
-                        });
+                    b.ToTable("Payments");
+                });
+
+            modelBuilder.Entity("StudentFleaMarket.Domain.Entities.RefreshToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ReplacedByTokenId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RevokedReason")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("RefreshTokens");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Report", b =>
@@ -604,16 +580,19 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("AdminNote")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid?>("ConversationId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<Guid?>("ItemId")
                         .HasColumnType("uuid");
@@ -636,7 +615,12 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
+                    b.Property<Guid?>("TransactionId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
 
                     b.HasIndex("CreatedAt");
 
@@ -644,16 +628,22 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ReportedUserId");
 
-                    b.HasIndex("ReporterId");
-
                     b.HasIndex("ResolvedById");
 
                     b.HasIndex("Status");
 
-                    b.ToTable("Reports", t =>
-                        {
-                            t.HasCheckConstraint("CK_Reports_HasTarget", "\"ReportedUserId\" IS NOT NULL OR \"ItemId\" IS NOT NULL");
-                        });
+                    b.HasIndex("TransactionId");
+
+                    b.HasIndex("ReporterId", "ConversationId")
+                        .IsUnique();
+
+                    b.HasIndex("ReporterId", "ItemId")
+                        .IsUnique();
+
+                    b.HasIndex("ReporterId", "TransactionId")
+                        .IsUnique();
+
+                    b.ToTable("Reports");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Review", b =>
@@ -663,10 +653,14 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("Comment")
-                        .HasColumnType("text");
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsVoided")
+                        .HasColumnType("boolean");
 
                     b.Property<int>("Rating")
                         .HasColumnType("integer");
@@ -680,21 +674,99 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TransactionId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("VoidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("VoidedByReportId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("VoidedByUserId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("RevieweeId");
 
                     b.HasIndex("ReviewerId");
 
-                    b.HasIndex("TransactionId", "ReviewerId", "RevieweeId")
+                    b.HasIndex("VoidedByReportId");
+
+                    b.HasIndex("TransactionId", "ReviewerId")
                         .IsUnique();
 
                     b.ToTable("Reviews", t =>
                         {
-                            t.HasCheckConstraint("CK_Reviews_DifferentUsers", "\"ReviewerId\" <> \"RevieweeId\"");
-
-                            t.HasCheckConstraint("CK_Reviews_Rating", "\"Rating\" BETWEEN 1 AND 5");
+                            t.HasCheckConstraint("CK_Reviews_Rating", "\"Rating\" >= 1 AND \"Rating\" <= 5");
                         });
+                });
+
+            modelBuilder.Entity("StudentFleaMarket.Domain.Entities.ServiceAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ApiKeyHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("KeyPrefix")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RevokedReason")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("Role")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(2);
+
+                    b.Property<int>("Status")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApiKeyHash")
+                        .IsUnique();
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("KeyPrefix");
+
+                    b.ToTable("ServiceAccounts");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Transaction", b =>
@@ -703,8 +775,13 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("BuyerId")
-                        .HasColumnType("uuid");
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("timestamp with time zone");
@@ -712,94 +789,151 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid>("CounterpartyId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ExchangeRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("InitiatorId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("ItemId")
                         .HasColumnType("uuid");
 
-                    b.Property<int>("Method")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("SellerId")
-                        .HasColumnType("uuid");
+                    b.Property<string>("MeetingLocation")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
-                    b.Property<decimal>("TotalAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BuyerId");
+                    b.HasIndex("CounterpartyId");
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("ItemId");
+                    b.HasIndex("ExchangeRequestId");
 
-                    b.HasIndex("SellerId");
+                    b.HasIndex("InitiatorId");
+
+                    b.HasIndex("ItemId");
 
                     b.HasIndex("Status");
 
-                    b.ToTable("Transactions", t =>
-                        {
-                            t.HasCheckConstraint("CK_Transactions_DifferentUsers", "\"BuyerId\" <> \"SellerId\"");
+                    b.HasIndex("Type");
 
-                            t.HasCheckConstraint("CK_Transactions_TotalAmount", "\"TotalAmount\" >= 0");
-                        });
+                    b.ToTable("Transactions");
                 });
 
-            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
+            modelBuilder.Entity("StudentFleaMarket.Domain.Entities.TransactionConfirmation", b =>
                 {
-                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
-                        .WithMany()
-                        .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ItemCodeVerified")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<bool>("ItemReceivedOk")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("TransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("TransactionId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("TransactionConfirmations");
                 });
 
-            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<System.Guid>", b =>
+            modelBuilder.Entity("StudentFleaMarket.Domain.Entities.VerificationCode", b =>
                 {
-                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("Email", "CodeHash");
+
+                    b.ToTable("VerificationCodes");
                 });
 
-            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<System.Guid>", b =>
+            modelBuilder.Entity("StudentFleaMarket.Domain.Entities.ApplicationUser", b =>
                 {
-                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", null)
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "BannedBy")
                         .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
+                        .HasForeignKey("BannedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
-            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<System.Guid>", b =>
-                {
-                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "RoleGrantedBy")
                         .WithMany()
-                        .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("RoleGrantedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", null)
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "SellerApprovedBy")
                         .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
+                        .HasForeignKey("SellerApprovedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
-            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<System.Guid>", b =>
-                {
-                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.Navigation("BannedBy");
+
+                    b.Navigation("RoleGrantedBy");
+
+                    b.Navigation("SellerApprovedBy");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Conversation", b =>
@@ -834,7 +968,8 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.HasOne("StudentFleaMarket.Domain.Entities.Item", "OfferedItem")
                         .WithMany()
                         .HasForeignKey("OfferedItemId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("StudentFleaMarket.Domain.Entities.Item", "RequestedItem")
                         .WithMany()
@@ -866,7 +1001,7 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "User")
                         .WithMany("Favorites")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Item");
@@ -882,6 +1017,11 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "HiddenBy")
+                        .WithMany()
+                        .HasForeignKey("HiddenByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Seller")
                         .WithMany("Items")
                         .HasForeignKey("SellerId")
@@ -889,6 +1029,8 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Category");
+
+                    b.Navigation("HiddenBy");
 
                     b.Navigation("Seller");
                 });
@@ -906,12 +1048,6 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Message", b =>
                 {
-                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Buyer")
-                        .WithMany()
-                        .HasForeignKey("BuyerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("StudentFleaMarket.Domain.Entities.Conversation", "Conversation")
                         .WithMany("Messages")
                         .HasForeignKey("ConversationId")
@@ -924,8 +1060,6 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Buyer");
-
                     b.Navigation("Conversation");
 
                     b.Navigation("Sender");
@@ -933,29 +1067,53 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Payment", b =>
                 {
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Payer")
+                        .WithMany()
+                        .HasForeignKey("PayerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("StudentFleaMarket.Domain.Entities.Transaction", "Transaction")
                         .WithOne("Payment")
                         .HasForeignKey("StudentFleaMarket.Domain.Entities.Payment", "TransactionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Payer");
+
                     b.Navigation("Transaction");
+                });
+
+            modelBuilder.Entity("StudentFleaMarket.Domain.Entities.RefreshToken", b =>
+                {
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "User")
+                        .WithMany("RefreshTokens")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Report", b =>
                 {
+                    b.HasOne("StudentFleaMarket.Domain.Entities.Conversation", "Conversation")
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("StudentFleaMarket.Domain.Entities.Item", "Item")
                         .WithMany()
                         .HasForeignKey("ItemId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "ReportedUser")
-                        .WithMany()
+                        .WithMany("ReportsAgainst")
                         .HasForeignKey("ReportedUserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Reporter")
-                        .WithMany()
+                        .WithMany("ReportsSubmitted")
                         .HasForeignKey("ReporterId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -965,6 +1123,13 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ResolvedById")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("StudentFleaMarket.Domain.Entities.Transaction", "Transaction")
+                        .WithMany()
+                        .HasForeignKey("TransactionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Conversation");
+
                     b.Navigation("Item");
 
                     b.Navigation("ReportedUser");
@@ -972,18 +1137,20 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Navigation("Reporter");
 
                     b.Navigation("ResolvedBy");
+
+                    b.Navigation("Transaction");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Review", b =>
                 {
                     b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Reviewee")
-                        .WithMany()
+                        .WithMany("ReviewsReceived")
                         .HasForeignKey("RevieweeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Reviewer")
-                        .WithMany()
+                        .WithMany("ReviewsWritten")
                         .HasForeignKey("ReviewerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -994,18 +1161,46 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("StudentFleaMarket.Domain.Entities.Report", "VoidedByReport")
+                        .WithMany()
+                        .HasForeignKey("VoidedByReportId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Reviewee");
 
                     b.Navigation("Reviewer");
 
                     b.Navigation("Transaction");
+
+                    b.Navigation("VoidedByReport");
+                });
+
+            modelBuilder.Entity("StudentFleaMarket.Domain.Entities.ServiceAccount", b =>
+                {
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CreatedByUser");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Transaction", b =>
                 {
-                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Buyer")
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Counterparty")
                         .WithMany()
-                        .HasForeignKey("BuyerId")
+                        .HasForeignKey("CounterpartyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ExchangeRequest", "ExchangeRequest")
+                        .WithMany()
+                        .HasForeignKey("ExchangeRequestId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Initiator")
+                        .WithMany()
+                        .HasForeignKey("InitiatorId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -1015,17 +1210,42 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "Seller")
-                        .WithMany()
-                        .HasForeignKey("SellerId")
+                    b.Navigation("Counterparty");
+
+                    b.Navigation("ExchangeRequest");
+
+                    b.Navigation("Initiator");
+
+                    b.Navigation("Item");
+                });
+
+            modelBuilder.Entity("StudentFleaMarket.Domain.Entities.TransactionConfirmation", b =>
+                {
+                    b.HasOne("StudentFleaMarket.Domain.Entities.Transaction", "Transaction")
+                        .WithMany("Confirmations")
+                        .HasForeignKey("TransactionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Buyer");
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "User")
+                        .WithMany("TransactionConfirmations")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                    b.Navigation("Item");
+                    b.Navigation("Transaction");
 
-                    b.Navigation("Seller");
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("StudentFleaMarket.Domain.Entities.VerificationCode", b =>
+                {
+                    b.HasOne("StudentFleaMarket.Domain.Entities.ApplicationUser", "User")
+                        .WithMany("VerificationCodes")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.ApplicationUser", b =>
@@ -1033,6 +1253,20 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Navigation("Favorites");
 
                     b.Navigation("Items");
+
+                    b.Navigation("RefreshTokens");
+
+                    b.Navigation("ReportsAgainst");
+
+                    b.Navigation("ReportsSubmitted");
+
+                    b.Navigation("ReviewsReceived");
+
+                    b.Navigation("ReviewsWritten");
+
+                    b.Navigation("TransactionConfirmations");
+
+                    b.Navigation("VerificationCodes");
                 });
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Category", b =>
@@ -1054,6 +1288,8 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("StudentFleaMarket.Domain.Entities.Transaction", b =>
                 {
+                    b.Navigation("Confirmations");
+
                     b.Navigation("Payment");
 
                     b.Navigation("Reviews");

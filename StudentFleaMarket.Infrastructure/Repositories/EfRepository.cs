@@ -1,0 +1,205 @@
+using System.Linq.Expressions;
+using Microsoft.EntityFrameworkCore;
+using StudentFleaMarket.Application.Common.Interfaces;
+using StudentFleaMarket.Domain.Entities;
+using StudentFleaMarket.Infrastructure.Persistence;
+
+namespace StudentFleaMarket.Infrastructure.Repositories;
+
+public class EfRepository<T> : IRepository<T> where T : class
+{
+    protected readonly AppDbContext DbContext;
+    protected readonly DbSet<T> DbSet;
+
+    public EfRepository(AppDbContext dbContext)
+    {
+        DbContext = dbContext;
+        DbSet = dbContext.Set<T>();
+    }
+
+    public virtual async Task<T?> GetByIdAsync(Guid id, CancellationToken ct = default)
+        => await DbSet.FindAsync(new object[] { id }, ct);
+
+    public virtual async Task<bool> ExistsAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default)
+        => await DbSet.AnyAsync(predicate, ct);
+
+    public virtual async Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default)
+        => await DbSet.FirstOrDefaultAsync(predicate, ct);
+
+    public virtual async Task<List<T>> ListAsync(Expression<Func<T, bool>>? predicate = null, CancellationToken ct = default)
+        => predicate is null
+            ? await DbSet.ToListAsync(ct)
+            : await DbSet.Where(predicate).ToListAsync(ct);
+
+    public virtual async Task AddAsync(T entity, CancellationToken ct = default)
+        => await DbSet.AddAsync(entity, ct);
+
+    public virtual async Task AddRangeAsync(IEnumerable<T> entities, CancellationToken ct = default)
+        => await DbSet.AddRangeAsync(entities, ct);
+
+    public virtual void Update(T entity) => DbSet.Update(entity);
+
+    public virtual void Remove(T entity) => DbSet.Remove(entity);
+
+    public virtual async Task<int> SaveChangesAsync(CancellationToken ct = default)
+        => await DbContext.SaveChangesAsync(ct);
+}
+
+public class UserRepository : EfRepository<ApplicationUser>, IUserRepository
+{
+    public UserRepository(AppDbContext dbContext) : base(dbContext) { }
+
+    public Task<ApplicationUser?> GetByEmailAsync(string email, CancellationToken ct = default)
+        => DbSet.FirstOrDefaultAsync(u => u.Email == email, ct);
+
+    public Task<ApplicationUser?> GetByUsernameAsync(string username, CancellationToken ct = default)
+        => DbSet.FirstOrDefaultAsync(u => u.Username != null && u.Username.ToLower() == username.ToLower(), ct);
+
+    public Task<ApplicationUser?> GetByUsernameOrEmailAsync(string identifier, CancellationToken ct = default)
+    {
+        var key = identifier.Trim();
+
+        // Nếu chứa '@' thì coi là email, ngược lại coi là username.
+        return key.Contains('@')
+            ? GetByEmailAsync(key.ToLowerInvariant(), ct)
+            : GetByUsernameAsync(key, ct);
+    }
+
+    public async Task<(List<ApplicationUser> Users, int TotalCount)> ListSellerRequestsAsync(
+        int? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        // Chỉ quan tâm tài khoản người dùng — Admin và Moderator đều không cần
+        // xin quyền bán (nhân viên luôn có sẵn quyền đăng tin).
+        var q = DbSet.Where(u => u.Role == (int)Domain.Enums.UserRole.User);
+
+        if (status.HasValue)
+            q = q.Where(u => u.SellerStatus == status.Value);
+
+        var total = await q.CountAsync(ct);
+
+        var pageNo = page < 1 ? 1 : page;
+        var size = pageSize switch
+        {
+            < 1 => 20,
+            > 100 => 100,
+            _ => pageSize
+        };
+
+        var users = await q
+            // Yêu cầu mới nhất lên đầu; user chưa từng xin thì xếp cuối.
+            .OrderByDescending(u => u.SellerRequestedAt ?? DateTime.MinValue)
+            .ThenBy(u => u.CreatedAt)
+            .Skip((pageNo - 1) * size)
+            .Take(size)
+            .ToListAsync(ct);
+
+        return (users, total);
+    }
+
+    public async Task<(List<ApplicationUser> Users, int TotalCount)> ListForAdminAsync(
+        int? status,
+        string? keyword,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        // Bao gồm cả tài khoản Admin và Moderator — nhân viên cần nhìn thấy danh
+        // sách để quản lý lẫn nhau.
+        // Loại trừ tài khoản dịch vụ AI (xác thực bằng API key, không phải user).
+        var q = DbSet.Where(u => u.Role != (int)Domain.Enums.UserRole.AiService);
+
+        if (status.HasValue)
+            q = q.Where(u => u.Status == status.Value);
+
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            var k = keyword.Trim().ToLower();
+            q = q.Where(u =>
+                u.FullName.ToLower().Contains(k)
+                || u.Email.ToLower().Contains(k)
+                || (u.Username != null && u.Username.ToLower().Contains(k)));
+        }
+
+        var total = await q.CountAsync(ct);
+
+        var pageNo = page < 1 ? 1 : page;
+        var size = pageSize switch
+        {
+            < 1 => 20,
+            > 100 => 100,
+            _ => pageSize
+        };
+
+        var users = await q
+            .OrderByDescending(u => u.CreatedAt)
+            .Skip((pageNo - 1) * size)
+            .Take(size)
+            .ToListAsync(ct);
+
+        return (users, total);
+    }
+
+    public async Task<(List<ApplicationUser> Users, int TotalCount)> ListModeratorsAsync(
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        // Chỉ các tài khoản đang là kiểm duyệt viên.
+        var q = DbSet.Where(u => u.Role == (int)Domain.Enums.UserRole.Moderator);
+
+        var total = await q.CountAsync(ct);
+
+        var pageNo = page < 1 ? 1 : page;
+        var size = pageSize switch
+        {
+            < 1 => 20,
+            > 100 => 100,
+            _ => pageSize
+        };
+
+        // Mới được cấp quyền lên đầu.
+        var users = await q
+            .OrderByDescending(u => u.RoleGrantedAt ?? DateTime.MinValue)
+            .ThenBy(u => u.CreatedAt)
+            .Skip((pageNo - 1) * size)
+            .Take(size)
+            .ToListAsync(ct);
+
+        return (users, total);
+    }
+
+    public async Task<(int Status, string? BanReason)?> GetStatusAsync(Guid userId, CancellationToken ct = default)
+    {
+        // Chỉ select 2 cột cần thiết -> nhẹ hơn nhiều so với load cả entity.
+        var row = await DbSet
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new { u.Status, u.BanReason })
+            .FirstOrDefaultAsync(ct);
+
+        return row is null ? null : (row.Status, row.BanReason);
+    }
+
+    public async Task<int?> GetRoleAsync(Guid userId, CancellationToken ct = default)
+    {
+        // Chỉ select cột "Role" -> rất nhẹ, index theo PK.
+        var role = await DbSet
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => (int?)u.Role)
+            .FirstOrDefaultAsync(ct);
+
+        return role;
+    }
+}
+
+public class ServiceAccountRepository : EfRepository<ServiceAccount>, IServiceAccountRepository
+{
+    public ServiceAccountRepository(AppDbContext dbContext) : base(dbContext) { }
+
+    public Task<ServiceAccount?> GetByApiKeyHashAsync(string apiKeyHash, CancellationToken ct = default)
+        => DbSet.FirstOrDefaultAsync(s => s.ApiKeyHash == apiKeyHash, ct);
+}

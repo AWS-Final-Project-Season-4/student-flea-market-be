@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\StudentFleaMarket.Application\StudentFleaMarket.Application.csproj" />
+    <ProjectReference Include="..\StudentFleaMarket.ImageProcessor\StudentFleaMarket.ImageProcessor.csproj" />
     <ProjectReference Include="..\StudentFleaMarket.Infrastructure\StudentFleaMarket.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

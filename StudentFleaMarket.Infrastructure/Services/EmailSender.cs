@@ -1,0 +1,111 @@
+using System.Net;
+using System.Net.Mail;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using StudentFleaMarket.Application.Common.Interfaces;
+
+namespace StudentFleaMarket.Infrastructure.Services;
+
+public class EmailOptions
+{
+    public string Host { get; set; } = "localhost";
+    public int Port { get; set; } = 25;
+    public bool UseSsl { get; set; } = false;
+    public string? Username { get; set; }
+    public string? Password { get; set; }
+    public string FromEmail { get; set; } = "no-reply@studentfleamarket.local";
+    public string FromName { get; set; } = "Student Flea Market";
+
+    /// <summary>
+    /// true = chỉ ghi log nội dung email ra console (dùng cho môi trường Development
+    /// khi chưa cấu hình SMTP thật).
+    /// </summary>
+    public bool LogOnly { get; set; } = true;
+
+    /// <summary>
+    /// Dev safety net: when real SMTP sending fails, still write the message to the log
+    /// so OTP codes are not lost. Keep false in production (logs would contain codes).
+    /// </summary>
+    public bool LogOnFailure { get; set; } = false;
+}
+
+public class EmailSender : IEmailSender
+{
+    private readonly EmailOptions _options;
+    private readonly ILogger<EmailSender> _logger;
+
+    public EmailSender(IOptions<EmailOptions> options, ILogger<EmailSender> logger)
+    {
+        _options = options.Value;
+        _logger = logger;
+    }
+
+    public async Task SendAsync(string to, string subject, string body, bool isHtml = true, CancellationToken ct = default)
+    {
+        if (_options.LogOnly)
+        {
+            _logger.LogInformation(
+                "[EMAIL-LOG] To={To} | Subject={Subject} | Body={Body}",
+                to, subject, isHtml ? StripHtml(body) : body);
+            return;
+        }
+
+        using var client = new SmtpClient(_options.Host, _options.Port)
+        {
+            EnableSsl = _options.UseSsl,
+            Credentials = string.IsNullOrWhiteSpace(_options.Username)
+                ? CredentialCache.DefaultNetworkCredentials
+                : new NetworkCredential(_options.Username, _options.Password)
+        };
+
+        // Gmail (and most SMTP relays) reject a From address that differs from the authenticated account.
+        // When FromEmail was left at its placeholder, send as the SMTP user instead.
+        var fromEmail = !string.IsNullOrWhiteSpace(_options.Username)
+                        && _options.FromEmail.EndsWith(".local", StringComparison.OrdinalIgnoreCase)
+            ? _options.Username
+            : _options.FromEmail;
+
+        using var message = new MailMessage
+        {
+            From = new MailAddress(fromEmail, _options.FromName),
+            Subject = subject,
+            Body = body,
+            IsBodyHtml = isHtml,
+            BodyEncoding = System.Text.Encoding.UTF8
+        };
+        message.To.Add(new MailAddress(to));
+
+        try
+        {
+            await client.SendMailAsync(message, ct);
+        }
+        catch (Exception ex) when (_options.LogOnFailure)
+        {
+            _logger.LogWarning(ex,
+                "[EMAIL-LOG fallback] SMTP failed. To={To} | Subject={Subject} | Body={Body}",
+                to, subject, isHtml ? StripHtml(body) : body);
+        }
+    }
+
+    public Task SendOtpAsync(string to, string fullName, string code, CancellationToken ct = default)
+    {
+        var subject = "Mã xác thực tài khoản Student Flea Market";
+        var body = $@"
+            <div style='font-family:Segoe UI,Arial,sans-serif;max-width:520px'>
+                <h2 style='color:#16a34a'>Xác thực email</h2>
+                <p>Chào <b>{System.Net.WebUtility.HtmlEncode(fullName)}</b>,</p>
+                <p>Mã xác thực của bạn là:</p>
+                <p style='font-size:28px;font-weight:bold;letter-spacing:6px;color:#111'>{code}</p>
+                <p>Mã có hiệu lực trong <b>10 phút</b>. Nếu bạn không yêu cầu mã này, hãy bỏ qua email.</p>
+            </div>";
+
+        return SendAsync(to, subject, body, true, ct);
+    }
+
+    private static string StripHtml(string html)
+    {
+        return System.Text.RegularExpressions.Regex.Replace(html, "<.*?>", string.Empty)
+            .Replace("&nbsp;", " ")
+            .Trim();
+    }
+}
