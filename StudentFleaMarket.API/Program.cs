@@ -17,6 +17,7 @@ var builder = WebApplication.CreateBuilder(args);
 // ---------------------------------------------------------------- Configuration
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
+builder.Services.Configure<GoogleAuthOptions>(builder.Configuration.GetSection("Google"));
 
 // ------------------------------------------------------------------- Database
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -101,11 +102,11 @@ builder.Services
                 // Dùng mã ASCII để hiển thị đúng trên mọi console (kể cả khi redirect).
                 var reason = context.Exception switch
                 {
-                    SecurityTokenExpiredException => "TOKEN_EXPIRED: token da het han.",
-                    SecurityTokenInvalidSignatureException => "INVALID_TOKEN_SIGNATURE: sai chu ky token (thuong do dan nham token hoac dan them tien to 'Bearer').",
-                    SecurityTokenInvalidAudienceException => "INVALID_TOKEN_AUDIENCE: sai audience cua token.",
-                    SecurityTokenInvalidIssuerException => "INVALID_TOKEN_ISSUER: sai issuer cua token.",
-                    SecurityTokenMalformedException => "TOKEN_MALFORMED: token sai dinh dang (thuong do dan nham refresh token hoac dan ca JSON response).",
+                    SecurityTokenExpiredException => "TOKEN_EXPIRED: token has expired.",
+                    SecurityTokenInvalidSignatureException => "INVALID_TOKEN_SIGNATURE: Invalid token signature (commonly caused by pasting the wrong token or including duplicate 'Bearer' prefix).",
+                    SecurityTokenInvalidAudienceException => "INVALID_TOKEN_AUDIENCE: Invalid token audience.",
+                    SecurityTokenInvalidIssuerException => "INVALID_TOKEN_ISSUER: Invalid token issuer.",
+                    SecurityTokenMalformedException => "TOKEN_MALFORMED: Malformed token format (commonly caused by pasting a refresh token or entire JSON response).",
                     _ => $"AUTH_FAILED: {context.Exception.GetType().Name}."
                 };
 
@@ -113,7 +114,7 @@ builder.Services
                     .GetRequiredService<ILoggerFactory>()
                     .CreateLogger("JwtAuth");
 
-                logger.LogWarning("Token bi tu choi -> {Reason}. Path={Path}",
+                logger.LogWarning("Token rejected -> {Reason}. Path={Path}",
                     reason, context.HttpContext.Request.Path);
 
                 return Task.CompletedTask;
@@ -138,10 +139,10 @@ builder.Services
 
                 var message = context.AuthenticateFailure switch
                 {
-                    SecurityTokenExpiredException => "Token đã hết hạn. Vui lòng đăng nhập lại.",
-                    SecurityTokenInvalidSignatureException => "Token không hợp lệ. Hãy chắc chắn bạn dán đúng accessToken, KHÔNG thêm chữ 'Bearer' và không dán nguyên JSON response.",
-                    SecurityTokenMalformedException => "Token sai định dạng. Hãy dán đúng accessToken, KHÔNG dán refreshToken hay cả JSON response của /api/Auth/login.",
-                    _ => "Yêu cầu đăng nhập để truy cập tài nguyên này."
+                    SecurityTokenExpiredException => "Token has expired. Please log in again.",
+                    SecurityTokenInvalidSignatureException => "Invalid token. Please make sure you pasted the correct accessToken, do NOT prepend 'Bearer', and do not paste the entire JSON response.",
+                    SecurityTokenMalformedException => "Malformed token format. Please paste the correct accessToken, do NOT paste refreshToken or the entire JSON response from /api/Auth/login.",
+                    _ => "Authentication required to access this resource."
                 };
 
                 var body = ApiResponse.Fail(message, errorCode);
@@ -157,7 +158,7 @@ builder.Services
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 context.Response.ContentType = "application/json; charset=utf-8";
 
-                var body = ApiResponse.Fail("Bạn không có quyền thực hiện thao tác này.", "FORBIDDEN");
+                var body = ApiResponse.Fail("You do not have permission to perform this action.", "FORBIDDEN");
                 await context.Response.WriteAsync(JsonSerializer.Serialize(body, new JsonSerializerOptions
                 {
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -193,22 +194,22 @@ builder.Services.AddSwaggerGen(options =>
 
         var tag = controllerName switch
         {
-            "ItemsController" => "Tìm kiếm & Xem tin",
-            "ItemsForSaleController" => "Đăng bán & Quản lý tin",
-            "FavoritesController" => "Yêu thích (Wishlist)",
-            "SellerController" => "Quyền bán hàng (Seller)",
-            "AdminSellerController" => "Quản trị - Duyệt người bán",
-            "AdminUsersController" => "Quản trị - Quản lý & cấm tài khoản",
-            "AdminModeratorsController" => "Quản trị - Kiểm duyệt viên (Moderator)",
-            "ExchangeRequestsController" => "Yêu cầu đổi đồ",
-            "TransactionsController" => "Giao dịch & Thanh toán",
-            "ChatController" => "Trò chuyện (Chat)",
-            "SellersController" => "Hồ sơ người bán & Uy tín",
-            "ReviewsController" => "Đánh giá uy tín (Reviews)",
-            "ReportsController" => "Báo cáo vi phạm (Reports)",
-            "AdminModerationController" => "Quản trị - Kiểm duyệt report",
-            "AdminCategoriesController" => "Quản trị - Quản lý danh mục",
-            _ => controllerName ?? "Khác"
+            "ItemsController" => "1. Search and View post",
+            "ItemsForSaleController" => "2. Listing and managing post",
+            "FavoritesController" => "3. Favorites",
+            "SellerController" => "4. Seller",
+            "AdminSellerController" => "5. Admin - Approve Seller",
+            "AdminUsersController" => "6. Admin - Manage and Ban Account",
+            "AdminModeratorsController" => "7. Admin - Moderators",
+            "ExchangeRequestsController" => "8. Exchange Requests",
+            "TransactionsController" => "9. Transactions & Payments",
+            "ChatController" => "10. Chat",
+            "SellersController" => "11. Seller Profiles & Trust",
+            "ReviewsController" => "12. Reviews",
+            "ReportsController" => "13. Reports",
+            "AdminModerationController" => "14. Admin - Report Moderation",
+            "AdminCategoriesController" => "15. Admin - Categories",
+            _ => controllerName ?? "Others"
         };
 
         return new List<string> { tag };
@@ -218,7 +219,7 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "Student Flea Market API",
         Version = "v1",
-        Description = "API cho sàn giao dịch đồ cũ sinh viên."
+        Description = "API for student flea market."
     });
 
     options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.OpenApiSecurityScheme
@@ -228,9 +229,9 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "bearer",
         BearerFormat = "JWT",
         In = Microsoft.OpenApi.ParameterLocation.Header,
-        Description = "Dán accessToken lấy từ response của POST /api/Auth/login (trường accessToken). " +
-                      "CHỈ dán token, KHÔNG thêm chữ 'Bearer' và KHÔNG dán nguyên cả JSON response. " +
-                      "Swagger sẽ tự thêm tiền tố 'Bearer '."
+        Description = "Paste the accessToken obtained from the response of the POST  /api/Auth/login request (in the accessToken field.) " +
+                      "Paste ONLY the token; DO NOT include the word 'Bearer' and DO NOT paste the entire JSON response. " +
+                      "Swagger automatically add the 'Bearer' prefix."
     });
 
     // Yêu cầu bảo mật toàn cục.
@@ -342,7 +343,7 @@ if (!builder.Configuration.GetValue<bool>("SkipDatabaseSeed"))
     }
     catch (Exception ex)
     {
-        app.Logger.LogError(ex, "Không seed được dữ liệu khởi tạo.");
+        app.Logger.LogError(ex, "Unable to seed the initial data.");
         throw;
     }
 
@@ -357,7 +358,7 @@ if (!builder.Configuration.GetValue<bool>("SkipDatabaseSeed"))
     }
     catch (Exception ex)
     {
-        app.Logger.LogWarning(ex, "Bỏ qua backfill cột dẫn xuất.");
+        app.Logger.LogWarning(ex, "Skip backfill for derived columns.");
     }
 
     // ---------------------------------------------------------- Seed DEMO data
@@ -379,13 +380,13 @@ if (!builder.Configuration.GetValue<bool>("SkipDatabaseSeed"))
             using var scope = app.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             await DemoDataSeeder.SeedAsync(db);
-            app.Logger.LogInformation("Đã nạp dữ liệu demo (users + tin đăng mẫu).");
+            app.Logger.LogInformation("Demo has been loaded (users + sample listings).");
         }
         catch (Exception ex)
         {
             // Không ném lỗi — demo data là tiện ích, lỗi seed demo không được
             // làm sập API (ví dụ DB chưa migrate đủ bảng).
-            app.Logger.LogWarning(ex, "Bỏ qua seed dữ liệu demo.");
+            app.Logger.LogWarning(ex, "Skip seeding demo data.");
         }
     }
 }

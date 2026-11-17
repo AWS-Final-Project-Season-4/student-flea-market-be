@@ -63,6 +63,10 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)");
 
+                    b.Property<string>("GoogleId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
                     b.Property<bool>("IsEmailVerified")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -137,6 +141,9 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.HasIndex("BannedByUserId");
 
                     b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.HasIndex("GoogleId")
                         .IsUnique();
 
                     b.HasIndex("RoleGrantedByUserId");
@@ -913,6 +920,11 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("Purpose")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
                     b.Property<DateTime?>("UsedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -925,7 +937,7 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.HasIndex("Email", "CodeHash");
+                    b.HasIndex("Email", "Purpose", "CodeHash");
 
                     b.ToTable("VerificationCodes");
                 });

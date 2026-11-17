@@ -21,13 +21,13 @@ public class ValidationException : AppException
 
 public class NotFoundException : AppException
 {
-    public NotFoundException(string message = "Không tìm thấy dữ liệu", string code = "NOT_FOUND")
+    public NotFoundException(string message = "No data found.", string code = "NOT_FOUND")
         : base(message, code) { }
 }
 
 public class UnauthorizedException : AppException
 {
-    public UnauthorizedException(string message = "Không được phép truy cập", string code = "UNAUTHORIZED")
+    public UnauthorizedException(string message = "Access denied", string code = "UNAUTHORIZED")
         : base(message, code) { }
 }
 

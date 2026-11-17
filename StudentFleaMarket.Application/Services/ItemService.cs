@@ -8,6 +8,10 @@ using StudentFleaMarket.Domain.Enums;
 
 namespace StudentFleaMarket.Application.Services;
 
+/// <summary>
+/// Service managing student flea market item listings:
+/// creation, updates, soft deletion, search, and retrieval.
+/// </summary>
 public class ItemService : IItemService
 {
     private readonly IItemRepository _itemRepo;
@@ -30,32 +34,24 @@ public class ItemService : IItemService
     // ------------------------------------------------------------ CREATE
     public async Task<ItemDetailDto> CreateAsync(Guid sellerId, CreateItemRequestDto request, CancellationToken ct = default)
     {
-        // Kiểm tra danh mục tồn tại
+        // 1. Verify that category exists
         var category = await _categoryRepo.GetByIdAsync(request.CategoryId, ct)
-            ?? throw new NotFoundException("Danh mục không tồn tại.", "CATEGORY_NOT_FOUND");
+            ?? throw new NotFoundException("Category does not exist.", "CATEGORY_NOT_FOUND");
 
-        // ---------------------------------------------------------------
-        // Danh mục đã ĐÓNG -> không cho đăng tin mới vào.
-        // (Feature 5 - Admin Dashboard: quản trị viên đóng danh mục khi nhóm
-        // hàng đó bị phát hiện có rủi ro, ví dụ tin giả hoặc giao dịch lừa đảo.)
-        // ---------------------------------------------------------------
+        // 2. Closed category cannot accept new listings (Admin/Moderator circuit breaker)
         if (!category.IsActive)
             throw new ValidationException(
-                $"Danh mục \"{category.Name}\" hiện đang tạm đóng nên không thể đăng tin mới.",
+                $"Category \"{category.Name}\" is currently inactive and cannot accept new listings.",
                 "CATEGORY_INACTIVE");
 
-        // Người bán phải là tài khoản thật (loại trừ tài khoản dịch vụ AI)
+        // 3. Seller must be a real user account
         var seller = await _userRepo.GetByIdAsync(sellerId, ct)
-            ?? throw new NotFoundException("Không tìm thấy người dùng.", "USER_NOT_FOUND");
+            ?? throw new NotFoundException("User not found.", "USER_NOT_FOUND");
 
         if (seller.Role == (int)UserRole.AiService)
-            throw new ForbiddenException("Tài khoản dịch vụ AI không được đăng tin bán.", "AI_CANNOT_CREATE_ITEM");
+            throw new ForbiddenException("AI service accounts are not permitted to list items for sale.", "AI_CANNOT_CREATE_ITEM");
 
-        // ---------------------------------------------------------------
-        // Chỉ tài khoản được Admin duyệt mới đăng được tin mới.
-        // Admin có sẵn toàn bộ quyền nên không cần duyệt.
-        // Luật nằm trong SellerPermission (nguồn sự thật duy nhất).
-        // ---------------------------------------------------------------
+        // 4. Ensure user has approved seller permissions
         SellerPermission.EnsureCanSell(seller);
 
         var item = new Item
@@ -66,8 +62,8 @@ public class ItemService : IItemService
             Title = request.Title.Trim(),
             Slug = SlugHelper.GenerateUnique(request.Title),
             TitleNormalized = SlugHelper.NormalizeForSearch(request.Title),
-            // Mã hàng cho người dùng — sinh tự động, không cho user chọn.
-            ItemCode = await GenerateUniqueItemCodeAsync(ct),
+            // Automatic ItemCode generation with category-based prefix (BK, EL, ST...)
+            ItemCode = await GenerateUniqueItemCodeAsync(ItemCodeHelper.GetCategoryPrefix(category.Slug ?? category.Name), ct),
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
             Price = request.Price,
             Condition = request.Condition,
@@ -80,7 +76,7 @@ public class ItemService : IItemService
 
         await _itemRepo.AddAsync(item, ct);
 
-        // Gắn ảnh (ảnh đầu tiên là ảnh chính)
+        // Attach images (first image is primary)
         var imageUrls = NormalizeImageUrls(request.ImageUrls);
         for (var i = 0; i < imageUrls.Count; i++)
         {
@@ -103,38 +99,29 @@ public class ItemService : IItemService
     // ------------------------------------------------------------ UPDATE
     public async Task<ItemDetailDto> UpdateAsync(Guid userId, Guid itemId, UpdateItemRequestDto request, CancellationToken ct = default)
     {
-        // Dùng bản tracked (không AsNoTracking) để các thay đổi ảnh được ghi nhận.
         var item = await _itemRepo.GetByIdAsync(itemId, ct)
-            ?? throw new NotFoundException("Không tìm thấy tin đăng.", "ITEM_NOT_FOUND");
+            ?? throw new NotFoundException("Listing not found.", "ITEM_NOT_FOUND");
 
-        // Chỉ chủ tin được sửa
+        // Only the seller can edit their own listing
         if (item.SellerId != userId)
-            throw new ForbiddenException("Bạn không có quyền sửa tin đăng này.", "NOT_ITEM_OWNER");
+            throw new ForbiddenException("You do not have permission to edit this listing.", "NOT_ITEM_OWNER");
 
-        // ---------------------------------------------------------------
-        // Chủ tin vẫn phải CÓ quyền bán mới được sửa tin.
-        // Nếu Admin đã thu hồi quyền bán (SellerStatus = None) thì toàn bộ
-        // tin của tài khoản đó đã bị gỡ khỏi sàn -> không còn gì để sửa.
-        // Nhưng nếu tài khoản bị từ chối / đang chờ duyệt mà vẫn còn tin cũ,
-        // phải chặn để không lách luật "chỉ seller được duyệt mới đăng bán".
-        // ---------------------------------------------------------------
         var seller = await _userRepo.GetByIdAsync(item.SellerId, ct)
-            ?? throw new NotFoundException("Không tìm thấy người bán.", "USER_NOT_FOUND");
+            ?? throw new NotFoundException("Seller not found.", "USER_NOT_FOUND");
 
         SellerPermission.EnsureCanSell(seller);
 
         if (item.Status == (int)ItemStatus.Sold)
-            throw new ValidationException("Tin đã bán không thể chỉnh sửa.", "ITEM_ALREADY_SOLD");
+            throw new ValidationException("Sold items cannot be edited.", "ITEM_ALREADY_SOLD");
 
         if (request.CategoryId.HasValue)
         {
             var newCategory = await _categoryRepo.GetByIdAsync(request.CategoryId.Value, ct)
-                ?? throw new NotFoundException("Danh mục không tồn tại.", "CATEGORY_NOT_FOUND");
+                ?? throw new NotFoundException("Category does not exist.", "CATEGORY_NOT_FOUND");
 
-            // Không chuyển tin sang danh mục đang đóng (giống lúc tạo tin).
             if (!newCategory.IsActive)
                 throw new ValidationException(
-                    $"Danh mục \"{newCategory.Name}\" hiện đang tạm đóng nên không thể chuyển tin sang.",
+                    $"Category \"{newCategory.Name}\" is currently inactive and cannot accept listings.",
                     "CATEGORY_INACTIVE");
 
             item.CategoryId = newCategory.Id;
@@ -162,7 +149,7 @@ public class ItemService : IItemService
         if (!string.IsNullOrWhiteSpace(request.Location))
             item.Location = request.Location.Trim();
 
-        // Thay toàn bộ ảnh nếu có ImageUrls (kể cả mảng rỗng = xóa hết ảnh)
+        // Replace all images if ImageUrls is provided
         if (request.ImageUrls is not null)
         {
             var oldImages = await _itemRepo.GetImagesAsync(itemId, ct);
@@ -200,12 +187,12 @@ public class ItemService : IItemService
     public async Task<ApiResponse<object>> DeleteAsync(Guid userId, bool isStaff, Guid itemId, CancellationToken ct = default)
     {
         var item = await _itemRepo.GetByIdAsync(itemId, ct)
-            ?? throw new NotFoundException("Không tìm thấy tin đăng.", "ITEM_NOT_FOUND");
+            ?? throw new NotFoundException("Listing not found.", "ITEM_NOT_FOUND");
 
         if (!isStaff && item.SellerId != userId)
-            throw new ForbiddenException("Bạn không có quyền xóa tin đăng này.", "NOT_ITEM_OWNER");
+            throw new ForbiddenException("You do not have permission to delete this listing.", "NOT_ITEM_OWNER");
 
-        // Soft delete — query filter của DbContext sẽ ẩn tin này khỏi mọi truy vấn.
+        // Soft delete — hides item from public queries while preserving transaction history
         item.IsDeleted = true;
         item.Status = (int)ItemStatus.Removed;
         item.UpdatedAt = DateTime.UtcNow;
@@ -213,14 +200,14 @@ public class ItemService : IItemService
         _itemRepo.Update(item);
         await _itemRepo.SaveChangesAsync(ct);
 
-        return ApiResponse<object>.Ok(new { Message = "Đã gỡ tin đăng." });
+        return ApiResponse<object>.Ok(new { Message = "Listing removed successfully." });
     }
 
     // ------------------------------------------------------------ GET
     public async Task<ItemDetailDto> GetByIdAsync(Guid itemId, Guid? userId, CancellationToken ct = default)
     {
         var item = await _itemRepo.GetDetailAsync(itemId, ct)
-            ?? throw new NotFoundException("Không tìm thấy tin đăng.", "ITEM_NOT_FOUND");
+            ?? throw new NotFoundException("Listing not found.", "ITEM_NOT_FOUND");
 
         var seller = await _userRepo.GetByIdAsync(item.SellerId, ct);
         var favCount = await _favoriteRepo.CountByItemAsync(itemId, ct);
@@ -232,7 +219,7 @@ public class ItemService : IItemService
     public async Task<ItemDetailDto> GetBySlugAsync(string slug, Guid? userId, CancellationToken ct = default)
     {
         var item = await _itemRepo.GetBySlugAsync(slug, ct)
-            ?? throw new NotFoundException("Không tìm thấy tin đăng.", "ITEM_NOT_FOUND");
+            ?? throw new NotFoundException("Listing not found.", "ITEM_NOT_FOUND");
 
         var seller = await _userRepo.GetByIdAsync(item.SellerId, ct);
         var favCount = await _favoriteRepo.CountByItemAsync(item.Id, ct);
@@ -245,7 +232,7 @@ public class ItemService : IItemService
     {
         var item = await _itemRepo.GetByCodeAsync(code, ct)
             ?? throw new NotFoundException(
-                $"Không tìm thấy tin đăng có mã \"{ItemCodeHelper.Normalize(code)}\".",
+                $"Listing with code \"{ItemCodeHelper.Normalize(code)}\" was not found.",
                 "ITEM_CODE_NOT_FOUND");
 
         var seller = await _userRepo.GetByIdAsync(item.SellerId, ct);
@@ -269,10 +256,10 @@ public class ItemService : IItemService
         CancellationToken ct = default)
     {
         if (!ItemSortOptions.IsValid(query.SortBy))
-            throw new ValidationException("Tiêu chí sắp xếp không hợp lệ.", "INVALID_SORT_BY");
+            throw new ValidationException("Invalid sort option.", "INVALID_SORT_BY");
 
         if (query.MinPrice.HasValue && query.MaxPrice.HasValue && query.MinPrice > query.MaxPrice)
-            throw new ValidationException("Giá tối thiểu không được lớn hơn giá tối đa.", "INVALID_PRICE_RANGE");
+            throw new ValidationException("Minimum price cannot exceed maximum price.", "INVALID_PRICE_RANGE");
 
         var (items, total) = await _itemRepo.SearchAsync(query, includeAllStatuses, ct);
 
@@ -282,7 +269,7 @@ public class ItemService : IItemService
 
         var favSet = favoriteIds.ToHashSet();
 
-        // Số lượt yêu thích từng tin — 1 query cho cả trang (không N+1).
+        // Count favorites per item in a single batch query (avoids N+1 query problem)
         var favCounts = await _favoriteRepo.GetFavoriteCountsAsync(items.Select(i => i.Id), ct);
 
         var result = items
@@ -306,7 +293,7 @@ public class ItemService : IItemService
     {
         query.SellerId = sellerId;
 
-        // Chủ tin cần xem được cả tin đã gỡ / đã bán của mình.
+        // Listing owner can also see their own removed or sold listings
         var isOwner = userId.HasValue && userId.Value == sellerId;
 
         return await SearchInternalAsync(query, userId, includeAllStatuses: isOwner, ct);
@@ -317,8 +304,7 @@ public class ItemService : IItemService
     {
         var rows = await _categoryRepo.ListWithCountsAsync(ct);
 
-        // Chỉ trả về danh mục ĐANG MỞ. Danh mục đã đóng không hiển thị công
-        // khai (tính năng đóng/mở danh mục của Admin Dashboard).
+        // Only return active categories for public display
         return rows
             .Where(r => r.Category.IsActive)
             .Select(r => new CategoryDto
@@ -336,23 +322,20 @@ public class ItemService : IItemService
     // ------------------------------------------------------------ HELPERS
 
     /// <summary>
-    /// Sinh mã hàng (<c>ItemCode</c>) chắc chắn chưa tồn tại trong DB.
-    ///
-    /// Mã có 8 ký tự từ 36 ký tự (A-Z, 0-9) -> 36^8 ≈ 2.8 triệu tổ hợp, nên
-    /// xác suất trùng rất thấp; vẫn vòng lặc tới khi tìm được mã chưa có.
+    /// Generates a unique ItemCode that does not yet exist in the database.
+    /// Length: 8 characters (Category prefix + 6 Crockford Base32 characters).
     /// </summary>
-    private async Task<string> GenerateUniqueItemCodeAsync(CancellationToken ct)
+    private async Task<string> GenerateUniqueItemCodeAsync(string prefix, CancellationToken ct)
     {
         for (var attempt = 0; attempt < 20; attempt++)
         {
-            var code = ItemCodeHelper.Generate();
+            var code = ItemCodeHelper.Generate(prefix);
             if (!await _itemRepo.ExistsByCodeAsync(code, ct))
                 return code;
         }
 
-        // Rất hiếm gặp (xác suất cực nhỏ) -> báo lỗi thay vì tạo mã trùng.
         throw new InvalidOperationException(
-            "Không thể sinh mã hàng duy nhất. Vui lòng thử lại.");
+            "Failed to generate a unique item code. Please try again.");
     }
 
     private static List<string> NormalizeImageUrls(List<string>? urls)
@@ -399,8 +382,6 @@ public class ItemService : IItemService
             CreatedAt = item.CreatedAt
         };
     }
-
-    // ------------------------------------------------------------ HELPERS
 
     private static async Task<ItemDetailDto> BuildDetailDto(
         Item item,

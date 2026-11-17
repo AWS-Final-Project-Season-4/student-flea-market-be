@@ -85,15 +85,32 @@ public class AdminUserDto
     public bool IsStaff { get; set; }
 }
 
-// <summary>
-// Admin cấm tài khoản. Lý do nên được ghi rõ để user biết vì sao bị khoá.
-// </summary>
+///<summary>
+/// Danh sách các lý do vi phạm tiêu chuẩn trên SFM
+/// FE có thể dùng list này để render dropdown cho Admin chọn cho nhanh
+/// </summary>
+
+public static class StandardBanReasons
+{
+    public const string FraudScam = "Engaging in fraud, deception or the misapprociation of deposit money belonging to other students";
+    public const string Counterfeit = "Listing counterfeit or imitation goods, or providing false product information.";
+    public const string ProhibitedItem = "Trading in restricted goods (weapons, prohibited substances, wildlife, non-prescription pharmaceuticals, etc.).";
+    public const string Harassment = "Engaging in behavior that harasses, threatens, offends or insults other users.";
+    public const string SpamBot = "Constant spamming of junk posts";
+    public const string FakeStudentId = "Forging student ID cards, impersonating students from other universities.";
+    public const string PolicyViolation = "Serious violation of the platform's operational regulations and terms of service.";
+}
+
+/// <summary>
+/// DTO requests an account ban
+/// </summary>
+
 public class BanUserRequestDto
 {
     /// <summary>
-    /// Lý do cấm tài khoản (hiển thị khi user đăng nhập bị từ chối).
+    /// Lý do cấm tài khoản (Bắt buộc nhập, tối thiểu 10 ký tự, tối đa 500 ký tự).
     /// </summary>
-    public string? Reason { get; set; }
+    public string Reason { get; set; } = null!;
 }
 
 public class BanUserRequestDtoValidator : AbstractValidator<BanUserRequestDto>
@@ -101,7 +118,9 @@ public class BanUserRequestDtoValidator : AbstractValidator<BanUserRequestDto>
     public BanUserRequestDtoValidator()
     {
         RuleFor(x => x.Reason)
-            .MaximumLength(500).WithMessage("Lý do không được vượt quá 500 ký tự.")
-            .When(x => !string.IsNullOrWhiteSpace(x.Reason));
+             .Cascade(CascadeMode.Stop)
+             .NotEmpty().WithMessage("Providing a reason for an account ban is mandatory.")
+             .MinimumLength(10).WithMessage("The reason for an account ban must be at least 10 characters long to clearly state the violation.")
+             .MaximumLength(500).WithMessage("The reason for an account ban must not be exceed 500 characters.");
     }
 }

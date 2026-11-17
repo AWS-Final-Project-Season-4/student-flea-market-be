@@ -54,6 +54,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IEmailSender, EmailSender>();
+        services.AddScoped<IGoogleTokenVerifier, GoogleTokenVerifier>();
 
         // ------------------------------------------- BACKGROUND JOB
         // Tự hủy đơn đổi đồ quá hạn 7 ngày chưa xác nhận bàn giao.

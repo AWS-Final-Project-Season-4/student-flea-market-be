@@ -137,21 +137,21 @@ public class AdminUserService : IAdminUserService
 
         var reasonHtml = target.BanReason is null
             ? string.Empty
-            : $"<p>Lý do: <i>{System.Net.WebUtility.HtmlEncode(target.BanReason)}</i></p>";
+            : $"<p>Reason: <i>{System.Net.WebUtility.HtmlEncode(target.BanReason)}</i></p>";
 
         var removedHtml = removedCount > 0
-            ? $"<p><b>{removedCount}</b> tin đăng của bạn đã được gỡ khỏi sàn.</p>"
+            ? $"<p><b>{removedCount}</b> Your post has been removed from the platform</p>"
             : string.Empty;
 
         await SendMailSafeAsync(
             target.Email,
             target.FullName,
-            "Tài khoản của bạn đã bị khoá",
-            $@"<p>Chào <b>{System.Net.WebUtility.HtmlEncode(target.FullName)}</b>,</p>
-                <p>Tài khoản của bạn đã bị quản trị viên khoá.</p>
+            "Your account has been locked",
+            $@"<p>Hi, <b>{System.Net.WebUtility.HtmlEncode(target.FullName)}</b>,</p>
+                <p>Your account has been locked by an Administrator.</p>
                 {reasonHtml}
                 {removedHtml}
-                <p>Nếu cho rằng đây là nhầm lẫn, vui lòng liên hệ quản trị viên.</p>",
+                <p>If you believe this is a mistake, please contact the Administrator.</p>",
             ct);
 
         return MapUser(target, itemCount);
@@ -186,9 +186,9 @@ public class AdminUserService : IAdminUserService
         await SendMailSafeAsync(
             target.Email,
             target.FullName,
-            "Tài khoản của bạn đã được mở khoá",
-            $@"<p>Chào <b>{System.Net.WebUtility.HtmlEncode(target.FullName)}</b>,</p>
-                <p>Tài khoản của bạn đã được mở khoá. Bạn có thể đăng nhập lại bình thường.</p>",
+            "Your acccount has been unlocked",
+            $@"<p>Hi, <b>{System.Net.WebUtility.HtmlEncode(target.FullName)}</b>,</p>
+                <p>Your account has been unlocked. You can log in again as usual.</p>",
             ct);
 
         return MapUser(target, itemCount);
@@ -201,7 +201,7 @@ public class AdminUserService : IAdminUserService
     private async Task<ApplicationUser> FindUserOrThrowAsync(Guid userId, CancellationToken ct)
     {
         return await _userRepo.GetByIdAsync(userId, ct)
-            ?? throw new NotFoundException("Không tìm thấy người dùng.", "USER_NOT_FOUND");
+            ?? throw new NotFoundException("User not found", "USER_NOT_FOUND");
     }
 
     /// <summary>
@@ -300,10 +300,10 @@ public class AdminUserService : IAdminUserService
     /// </summary>
     public static string StatusNameOf(int status) => status switch
     {
-        (int)UserStatus.Active => "Hoạt động",
-        (int)UserStatus.Inactive => "Chưa kích hoạt",
-        (int)UserStatus.Banned => "Đã bị cấm",
-        _ => "Không xác định"
+        (int)UserStatus.Active => "Active",
+        (int)UserStatus.Inactive => "Inactive",
+        (int)UserStatus.Banned => "Banned",
+        _ => "Unknown"
     };
 
     private async Task SendMailSafeAsync(

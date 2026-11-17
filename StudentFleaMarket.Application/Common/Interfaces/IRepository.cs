@@ -34,6 +34,8 @@ public interface IUserRepository : IRepository<ApplicationUser>
 {
     Task<ApplicationUser?> GetByEmailAsync(string email, CancellationToken ct = default);
 
+    Task<ApplicationUser?> GetByGoogleIdAsync(string googleId, CancellationToken ct = default);
+
     /// <summary>
     /// Tìm user theo username (không phân biệt hoa thường).
     /// </summary>
