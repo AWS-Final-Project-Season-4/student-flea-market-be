@@ -54,6 +54,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IEmailSender, EmailSender>();
+        services.AddScoped<IGoogleTokenVerifier, GoogleTokenVerifier>();
 
         // FluentValidation: tự động validate request DTO trong controller
         services.AddValidatorsFromAssemblyContaining<RegisterRequestDtoValidator>();

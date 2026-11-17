@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StudentFleaMarket.Application.Common;
@@ -19,6 +20,7 @@ public class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IEmailSender _emailSender;
+    private readonly IGoogleTokenVerifier _googleTokenVerifier;
     private readonly JwtOptions _jwtOptions;
     private readonly ILogger<AuthService> _logger;
 
@@ -29,6 +31,7 @@ public class AuthService : IAuthService
         IPasswordHasher passwordHasher,
         IJwtTokenService jwtTokenService,
         IEmailSender emailSender,
+        IGoogleTokenVerifier googleTokenVerifier,
         IOptions<JwtOptions> jwtOptions,
         ILogger<AuthService> logger)
     {
@@ -38,6 +41,7 @@ public class AuthService : IAuthService
         _passwordHasher = passwordHasher;
         _jwtTokenService = jwtTokenService;
         _emailSender = emailSender;
+        _googleTokenVerifier = googleTokenVerifier;
         _jwtOptions = jwtOptions.Value;
         _logger = logger;
     }
@@ -74,7 +78,7 @@ public class AuthService : IAuthService
 
             _userRepo.Update(existing);
             await _userRepo.SaveChangesAsync(ct);
-            await CreateAndSendVerificationCodeAsync(existing, ct);
+            await CreateAndSendVerificationCodeAsync(existing, VerificationCodePurpose.EmailVerification, ct);
 
             return new RegisterResultDto
             {
@@ -105,7 +109,7 @@ public class AuthService : IAuthService
         await _userRepo.SaveChangesAsync(ct);
 
         // Sinh & gửi OTP xác thực email ngay sau khi đăng ký
-        await CreateAndSendVerificationCodeAsync(user, ct);
+        await CreateAndSendVerificationCodeAsync(user, VerificationCodePurpose.EmailVerification, ct);
 
         // Không sinh token: người dùng phải xác thực email rồi mới đăng nhập được.
         return new RegisterResultDto
@@ -127,32 +131,97 @@ public class AuthService : IAuthService
         if (user is null || !_passwordHasher.Verify(request.Password, user.PasswordHash))
             throw new UnauthorizedException("Email, tên tài khoản hoặc mật khẩu không đúng.", "INVALID_CREDENTIALS");
 
-        if (user.Status == (int)UserStatus.Banned)
-        {
-            // Nêu rõ lý do cấm (nếu Admin đã ghi) để user biết phải làm gì.
-            var reason = string.IsNullOrWhiteSpace(user.BanReason)
-                ? string.Empty
-                : $" Lý do: {user.BanReason}";
-
-            throw new UnauthorizedException(
-                $"Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.{reason}",
-                "ACCOUNT_BANNED");
-        }
-
-        if (user.Status == (int)UserStatus.Inactive)
-            throw new UnauthorizedException("Tài khoản chưa được kích hoạt.", "ACCOUNT_INACTIVE");
-
-        // Tài khoản dịch vụ AI không đăng nhập qua email/password.
-        if (user.Role == (int)UserRole.AiService)
-            throw new ForbiddenException(
-                "Tài khoản dịch vụ AI phải xác thực bằng API key (header X-Api-Key).",
-                "SERVICE_ACCOUNT_REQUIRES_API_KEY");
+        EnsureUserCanSignIn(user);
 
         // Chưa xác thực email thì chưa được cấp token.
         if (!user.IsEmailVerified)
             throw new ForbiddenException(
                 "Email chưa được xác thực. Vui lòng kiểm tra hộp thư và xác thực mã OTP trước khi đăng nhập.",
                 "EMAIL_NOT_VERIFIED");
+
+        return await BuildAuthResultAsync(user, ct);
+    }
+
+    // ------------------------------------------------------------ Google OAuth
+
+    public async Task<AuthResultDto> GoogleLoginAsync(GoogleLoginRequestDto request, CancellationToken ct = default)
+    {
+        var googleUser = await _googleTokenVerifier.VerifyIdTokenAsync(request.ResolvedIdToken, ct);
+
+        if (!googleUser.EmailVerified)
+            throw new ForbiddenException("Google account email is not verified.", "GOOGLE_EMAIL_NOT_VERIFIED");
+
+        var email = googleUser.Email.Trim().ToLowerInvariant();
+        var user = await _userRepo.GetByGoogleIdAsync(googleUser.Subject, ct)
+            ?? await _userRepo.GetByEmailAsync(email, ct);
+
+        if (user is not null)
+        {
+            EnsureUserCanSignIn(user);
+
+            if (!string.IsNullOrEmpty(user.GoogleId)
+                && !string.Equals(user.GoogleId, googleUser.Subject, StringComparison.Ordinal))
+            {
+                throw new ConflictException(
+                    "This email is already linked to another Google account.",
+                    "GOOGLE_ACCOUNT_MISMATCH");
+            }
+
+            var updated = false;
+            if (string.IsNullOrEmpty(user.GoogleId))
+            {
+                user.GoogleId = googleUser.Subject;
+                updated = true;
+            }
+
+            if (!user.IsEmailVerified)
+            {
+                user.IsEmailVerified = true;
+                updated = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(user.AvatarUrl) && !string.IsNullOrWhiteSpace(googleUser.Picture))
+            {
+                user.AvatarUrl = Truncate(googleUser.Picture.Trim(), 500);
+                updated = true;
+            }
+
+            if (updated)
+            {
+                user.UpdatedAt = DateTime.UtcNow;
+                _userRepo.Update(user);
+                await _userRepo.SaveChangesAsync(ct);
+            }
+        }
+        else
+        {
+            var fallbackName = email.Split('@')[0];
+            var displayName = string.IsNullOrWhiteSpace(googleUser.FullName)
+                ? fallbackName
+                : googleUser.FullName.Trim();
+
+            var randomSecret = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+
+            user = new ApplicationUser
+            {
+                Id = Guid.NewGuid(),
+                FullName = Truncate(displayName, 150) ?? fallbackName,
+                Email = email,
+                Username = null,
+                PasswordHash = _passwordHasher.Hash(randomSecret),
+                AvatarUrl = Truncate(googleUser.Picture?.Trim(), 500),
+                GoogleId = googleUser.Subject,
+                Role = (int)UserRole.User,
+                Status = (int)UserStatus.Active,
+                SellerStatus = (int)SellerStatus.None,
+                IsEmailVerified = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            await _userRepo.AddAsync(user, ct);
+            await _userRepo.SaveChangesAsync(ct);
+        }
 
         return await BuildAuthResultAsync(user, ct);
     }
@@ -234,10 +303,10 @@ public class AuthService : IAuthService
         var user = await _userRepo.GetByEmailAsync(email, ct);
 
         // Không lộ thông tin email có tồn tại hay không
-        if (user is null || user.IsEmailVerified)
+        if (user is null || user.IsEmailVerified || user.Role == (int)UserRole.AiService)
             return ApiResponse<object>.Ok(new { Message = "Nếu email hợp lệ, mã xác thực đã được gửi." });
 
-        await CreateAndSendVerificationCodeAsync(user, ct);
+        await CreateAndSendVerificationCodeAsync(user, VerificationCodePurpose.EmailVerification, ct);
         return ApiResponse<object>.Ok(new { Message = "Mã xác thực đã được gửi tới email." });
     }
 
@@ -248,26 +317,12 @@ public class AuthService : IAuthService
 
     public async Task<ApiResponse<object>> VerifyEmailAsync(VerifyEmailRequestDto request, CancellationToken ct = default)
     {
-        var email = request.Email.Trim().ToLowerInvariant();
-        var codeHash = HashHelper.Sha256(request.Code.Trim());
-
-        var codes = await _verificationCodeRepo.ListAsync(c => c.Email == email && c.CodeHash == codeHash, ct);
-        var code = codes.OrderByDescending(c => c.CreatedAt).FirstOrDefault();
-
-        if (code is null)
-            throw new ValidationException("Mã xác thực không đúng.", "INVALID_CODE");
-
-        if (code.IsUsed)
-            throw new ValidationException("Mã xác thực đã được sử dụng.", "CODE_ALREADY_USED");
-
-        if (code.IsExpired)
-            throw new ValidationException("Mã xác thực đã hết hạn. Vui lòng yêu cầu mã mới.", "CODE_EXPIRED");
-
-        if (code.AttemptCount >= 5)
-            throw new ValidationException("Bạn đã nhập sai mã quá nhiều lần. Vui lòng yêu cầu mã mới.", "TOO_MANY_ATTEMPTS");
-
-        code.UsedAt = DateTime.UtcNow;
-        _verificationCodeRepo.Update(code);
+        var code = await ValidateVerificationCodeAsync(
+            request.Email,
+            request.Code,
+            VerificationCodePurpose.EmailVerification,
+            consume: true,
+            ct);
 
         if (code.UserId is Guid userId)
         {
@@ -286,12 +341,152 @@ public class AuthService : IAuthService
         return ApiResponse<object>.Ok(new { Message = "Xác thực email thành công." });
     }
 
+    // ---------------------------------------------------------- Forgot password
+
+    public async Task<ApiResponse<object>> ForgotPasswordAsync(ForgotPasswordRequestDto request, CancellationToken ct = default)
+    {
+        var email = request.Email.Trim().ToLowerInvariant();
+        var user = await _userRepo.GetByEmailAsync(email, ct);
+
+        // Không tiết lộ email có tồn tại hoặc trạng thái tài khoản
+        if (user is not null
+            && user.Role != (int)UserRole.AiService
+            && user.Status == (int)UserStatus.Active)
+        {
+            await CreateAndSendVerificationCodeAsync(user, VerificationCodePurpose.PasswordReset, ct);
+        }
+
+        const string msg = "If the email is registered, a 6-digit password reset code has been sent.";
+        return ApiResponse<object>.Ok(new { Message = msg }, msg);
+    }
+
+    public async Task<ApiResponse<object>> VerifyResetCodeAsync(VerifyResetCodeRequestDto request, CancellationToken ct = default)
+    {
+        await ValidateVerificationCodeAsync(
+            request.Email,
+            request.Code,
+            VerificationCodePurpose.PasswordReset,
+            consume: false,
+            ct);
+
+        const string msg = "Verification code is valid.";
+        return ApiResponse<object>.Ok(new { Message = msg, Valid = true }, msg);
+    }
+
+    public async Task<ApiResponse<object>> ResetPasswordAsync(ResetPasswordRequestDto request, CancellationToken ct = default)
+    {
+        var email = request.Email.Trim().ToLowerInvariant();
+
+        var code = await ValidateVerificationCodeAsync(
+            email,
+            request.Code,
+            VerificationCodePurpose.PasswordReset,
+            consume: true,
+            ct);
+
+        var user = (code.UserId is Guid userId
+                ? await _userRepo.GetByIdAsync(userId, ct)
+                : await _userRepo.GetByEmailAsync(email, ct))
+            ?? throw new NotFoundException("User not found.", "USER_NOT_FOUND");
+
+        EnsureUserCanSignIn(user);
+
+        user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
+        if (!user.IsEmailVerified)
+            user.IsEmailVerified = true;
+        user.UpdatedAt = DateTime.UtcNow;
+        _userRepo.Update(user);
+
+        await _verificationCodeRepo.SaveChangesAsync(ct);
+        await _userRepo.SaveChangesAsync(ct);
+
+        // Thu hồi toàn bộ refresh token cũ để buộc đăng nhập lại bằng mật khẩu mới
+        await RevokeAllUserTokensAsync(user.Id, "PASSWORD_RESET", ct);
+
+        const string msg = "Password has been reset successfully. Please log in with your new password.";
+        return ApiResponse<object>.Ok(new { Message = msg }, msg);
+    }
+
     // ------------------------------------------------------------------ Helpers
 
-    private async Task CreateAndSendVerificationCodeAsync(ApplicationUser user, CancellationToken ct)
+    private static void EnsureUserCanSignIn(ApplicationUser user)
     {
-        // Vô hiệu hóa các mã cũ chưa dùng
-        var oldCodes = await _verificationCodeRepo.ListAsync(c => c.Email == user.Email && c.UsedAt == null, ct);
+        if (user.Status == (int)UserStatus.Banned)
+        {
+            var reason = string.IsNullOrWhiteSpace(user.BanReason)
+                ? string.Empty
+                : $" Lý do: {user.BanReason}";
+
+            throw new UnauthorizedException(
+                $"Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.{reason}",
+                "ACCOUNT_BANNED");
+        }
+
+        if (user.Status == (int)UserStatus.Inactive)
+            throw new UnauthorizedException("Tài khoản chưa được kích hoạt.", "ACCOUNT_INACTIVE");
+
+        if (user.Role == (int)UserRole.AiService)
+            throw new ForbiddenException(
+                "Tài khoản dịch vụ AI phải xác thực bằng API key (header X-Api-Key).",
+                "SERVICE_ACCOUNT_REQUIRES_API_KEY");
+    }
+
+    private async Task<VerificationCode> ValidateVerificationCodeAsync(
+        string email,
+        string plainCode,
+        VerificationCodePurpose purpose,
+        bool consume,
+        CancellationToken ct)
+    {
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var codeHash = HashHelper.Sha256(plainCode.Trim());
+
+        var codes = await _verificationCodeRepo.ListAsync(
+            c => c.Email == normalizedEmail && c.Purpose == (int)purpose, ct);
+
+        var latest = codes.OrderByDescending(c => c.CreatedAt).FirstOrDefault();
+
+        if (latest is null)
+            throw new ValidationException("Mã xác thực không đúng.", "INVALID_CODE");
+
+        if (latest.IsUsed)
+            throw new ValidationException("Mã xác thực đã được sử dụng.", "CODE_ALREADY_USED");
+
+        if (latest.IsExpired)
+            throw new ValidationException("Mã xác thực đã hết hạn. Vui lòng yêu cầu mã mới.", "CODE_EXPIRED");
+
+        if (latest.AttemptCount >= 5)
+            throw new ValidationException("Bạn đã nhập sai mã quá nhiều lần. Vui lòng yêu cầu mã mới.", "TOO_MANY_ATTEMPTS");
+
+        if (!string.Equals(latest.CodeHash, codeHash, StringComparison.Ordinal))
+        {
+            latest.AttemptCount += 1;
+            _verificationCodeRepo.Update(latest);
+            await _verificationCodeRepo.SaveChangesAsync(ct);
+
+            if (latest.AttemptCount >= 5)
+                throw new ValidationException("Bạn đã nhập sai mã quá nhiều lần. Vui lòng yêu cầu mã mới.", "TOO_MANY_ATTEMPTS");
+
+            throw new ValidationException("Mã xác thực không đúng.", "INVALID_CODE");
+        }
+
+        if (consume)
+        {
+            latest.UsedAt = DateTime.UtcNow;
+            _verificationCodeRepo.Update(latest);
+        }
+
+        return latest;
+    }
+
+    private async Task CreateAndSendVerificationCodeAsync(
+        ApplicationUser user,
+        VerificationCodePurpose purpose,
+        CancellationToken ct)
+    {
+        // Vô hiệu hóa các mã cũ cùng mục đích chưa dùng
+        var oldCodes = await _verificationCodeRepo.ListAsync(
+            c => c.Email == user.Email && c.Purpose == (int)purpose && c.UsedAt == null, ct);
 
         foreach (var old in oldCodes)
         {
@@ -299,13 +494,14 @@ public class AuthService : IAuthService
             _verificationCodeRepo.Update(old);
         }
 
-        var plainCode = Random.Shared.Next(100000, 999999).ToString();
+        var plainCode = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
         var verification = new VerificationCode
         {
             Id = Guid.NewGuid(),
             CodeHash = HashHelper.Sha256(plainCode),
             Email = user.Email,
             UserId = user.Id,
+            Purpose = (int)purpose,
             ExpiresAt = DateTime.UtcNow.AddMinutes(10),
             CreatedAt = DateTime.UtcNow,
             AttemptCount = 0
@@ -316,13 +512,22 @@ public class AuthService : IAuthService
 
         try
         {
-            await _emailSender.SendOtpAsync(user.Email, user.FullName, plainCode, ct);
+            if (purpose == VerificationCodePurpose.PasswordReset)
+                await _emailSender.SendPasswordResetOtpAsync(user.Email, user.FullName, plainCode, ct);
+            else
+                await _emailSender.SendOtpAsync(user.Email, user.FullName, plainCode, ct);
         }
         catch (Exception ex)
         {
-            // Không để lỗi gửi email làm hỏng luồng đăng ký
-            _logger.LogError(ex, "Không gửi được OTP tới {Email}", user.Email);
+            // Không để lỗi gửi email làm hỏng luồng xác thực
+            _logger.LogError(ex, "Không gửi được OTP ({Purpose}) tới {Email}", purpose, user.Email);
         }
+    }
+
+    private static string? Truncate(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        return value.Length <= maxLength ? value : value[..maxLength];
     }
 
     private async Task<AuthResultDto> BuildAuthResultAsync(ApplicationUser user, CancellationToken ct)

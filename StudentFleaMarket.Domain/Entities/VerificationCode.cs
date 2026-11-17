@@ -17,6 +17,11 @@ public class VerificationCode
     public Guid? UserId { get; set; }
     public ApplicationUser? User { get; set; }
 
+    /// <summary>
+    /// Mục đích của mã OTP: 1 = Xác thực email, 2 = Đặt lại mật khẩu.
+    /// </summary>
+    public int Purpose { get; set; } = (int)Enums.VerificationCodePurpose.EmailVerification;
+
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

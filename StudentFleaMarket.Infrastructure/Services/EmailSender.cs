@@ -91,12 +91,27 @@ public class EmailSender : IEmailSender
     {
         var subject = "Mã xác thực tài khoản Student Flea Market";
         var body = $@"
-            <div style='font-family:Segoe UI,Arial,sans-serif;max-width:520px'>
+            <div style='font-family:""Times New Roman"",Times,serif;max-width:520px'>
                 <h2 style='color:#16a34a'>Xác thực email</h2>
                 <p>Chào <b>{System.Net.WebUtility.HtmlEncode(fullName)}</b>,</p>
                 <p>Mã xác thực của bạn là:</p>
                 <p style='font-size:28px;font-weight:bold;letter-spacing:6px;color:#111'>{code}</p>
                 <p>Mã có hiệu lực trong <b>10 phút</b>. Nếu bạn không yêu cầu mã này, hãy bỏ qua email.</p>
+            </div>";
+
+        return SendAsync(to, subject, body, true, ct);
+    }
+
+    public Task SendPasswordResetOtpAsync(string to, string fullName, string code, CancellationToken ct = default)
+    {
+        var subject = "Mã đặt lại mật khẩu Student Flea Market";
+        var body = $@"
+            <div style='font-family:""Times New Roman"",Times,serif;max-width:520px'>
+                <h2 style='color:#d97706'>Đặt lại mật khẩu</h2>
+                <p>Chào <b>{System.Net.WebUtility.HtmlEncode(fullName)}</b>,</p>
+                <p>Mã OTP để đặt lại mật khẩu của bạn là:</p>
+                <p style='font-size:28px;font-weight:bold;letter-spacing:6px;color:#111'>{code}</p>
+                <p>Mã có hiệu lực trong <b>10 phút</b>. Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này.</p>
             </div>";
 
         return SendAsync(to, subject, body, true, ct);

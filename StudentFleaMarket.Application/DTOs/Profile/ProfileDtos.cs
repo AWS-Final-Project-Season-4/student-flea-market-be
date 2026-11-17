@@ -18,32 +18,34 @@ public class UpdateProfileRequestDtoValidator : AbstractValidator<UpdateProfileR
     public UpdateProfileRequestDtoValidator()
     {
         RuleFor(x => x.FullName)
-            .MinimumLength(2).WithMessage("Họ tên phải có ít nhất 2 ký tự.")
-            .MaximumLength(150).WithMessage("Họ tên không được vượt quá 150 ký tự.")
-            .When(x => !string.IsNullOrWhiteSpace(x.FullName));
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty().WithMessage("Full name cannot be blank.")
+            .MinimumLength(2).WithMessage("Full name must be at least 2 characters.")
+            .MaximumLength(150).WithMessage("Full name must not exceed 150 characters.")
+            .When(x => x.FullName is not null);
 
         RuleFor(x => x.PhoneNumber)
-            .Matches(@"^\+?[0-9]{9,15}$").WithMessage("Số điện thoại không hợp lệ.")
+            .Matches(@"^\+?[0-9]{9,15}$").WithMessage("Invalid phone number format.")
             .When(x => !string.IsNullOrWhiteSpace(x.PhoneNumber));
 
         RuleFor(x => x.AvatarUrl)
-            .MaximumLength(500).WithMessage("URL avatar không được vượt quá 500 ký tự.")
+            .MaximumLength(500).WithMessage("Avatar URL must not exceed 500 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.AvatarUrl));
 
         RuleFor(x => x.SchoolName)
-            .MaximumLength(200).WithMessage("Tên trường không được vượt quá 200 ký tự.")
+            .MaximumLength(200).WithMessage("School name must not exceed 200 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.SchoolName));
 
         RuleFor(x => x.StudentCode)
-            .MaximumLength(50).WithMessage("Mã sinh viên không được vượt quá 50 ký tự.")
+            .MaximumLength(50).WithMessage("Student code must not exceed 50 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.StudentCode));
 
         RuleFor(x => x.CommonArea)
-            .MaximumLength(200).WithMessage("Khu vực không được vượt quá 200 ký tự.")
+            .MaximumLength(200).WithMessage("Common area must not exceed 200 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.CommonArea));
 
         RuleFor(x => x.Dormitory)
-            .MaximumLength(200).WithMessage("Ký túc xá không được vượt quá 200 ký tự.")
+            .MaximumLength(200).WithMessage("Dormitory must not exceed 200 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.Dormitory));
     }
 }
@@ -60,16 +62,19 @@ public class ChangePasswordRequestDtoValidator : AbstractValidator<ChangePasswor
     public ChangePasswordRequestDtoValidator()
     {
         RuleFor(x => x.CurrentPassword)
-            .NotEmpty().WithMessage("Mật khẩu hiện tại không được để trống.");
+            .NotEmpty().WithMessage("Current password cannot be blank.");
 
         RuleFor(x => x.NewPassword)
-            .NotEmpty().WithMessage("Mật khẩu mới không được để trống.")
-            .MinimumLength(6).WithMessage("Mật khẩu mới phải có ít nhất 6 ký tự.")
-            .MaximumLength(100).WithMessage("Mật khẩu mới không được vượt quá 100 ký tự.")
-            .Matches(@"[A-Za-z]").WithMessage("Mật khẩu mới phải chứa ít nhất 1 chữ cái.")
-            .Matches(@"\d").WithMessage("Mật khẩu mới phải chứa ít nhất 1 chữ số.");
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty().WithMessage("New password cannot be blank.")
+            .MinimumLength(8).WithMessage("New password must be at least 8 characters long.")
+            .MaximumLength(100).WithMessage("New password must not exceed 100 characters.")
+            .Matches(@"[A-Z]").WithMessage("New password must contain at least one uppercase letter (A-Z).")
+            .Matches(@"[a-z]").WithMessage("New password must contain at least one lowercase letter (a-z).")
+            .Matches(@"\d").WithMessage("New password must contain at least one digit (0-9).")
+            .Matches(@"[\W_]").WithMessage("New password must contain at least one special character (!@#$%^&*...).");
 
         RuleFor(x => x.ConfirmPassword)
-            .Equal(x => x.NewPassword).WithMessage("Xác nhận mật khẩu mới không khớp.");
+            .Equal(x => x.NewPassword).WithMessage("Password confirmation does not match.");
     }
 }

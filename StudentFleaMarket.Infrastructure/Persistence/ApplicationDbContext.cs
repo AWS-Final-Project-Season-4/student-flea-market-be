@@ -39,8 +39,10 @@ public class AppDbContext: DbContext
             entity.HasIndex(u => u.Email).IsUnique();
             // Username là định danh đăng nhập thay thế — chỉ unique khi có giá trị.
             entity.HasIndex(u => u.Username).IsUnique();
+            entity.HasIndex(u => u.GoogleId).IsUnique();
             entity.Property(u => u.Email).IsRequired().HasMaxLength(256);
             entity.Property(u => u.Username).HasMaxLength(30);
+            entity.Property(u => u.GoogleId).HasMaxLength(128);
             entity.Property(u => u.FullName).IsRequired().HasMaxLength(150);
             entity.Property(u => u.PasswordHash).IsRequired().HasMaxLength(512);
             entity.Property(u => u.PhoneNumber).HasMaxLength(20);
@@ -117,10 +119,11 @@ public class AppDbContext: DbContext
         modelBuilder.Entity<VerificationCode>(entity =>
         {
             entity.HasKey(c => c.Id);
-            entity.HasIndex(c => new { c.Email, c.CodeHash });
+            entity.HasIndex(c => new { c.Email, c.Purpose, c.CodeHash });
             entity.HasIndex(c => c.ExpiresAt);
             entity.Property(c => c.CodeHash).IsRequired().HasMaxLength(128);
             entity.Property(c => c.Email).IsRequired().HasMaxLength(256);
+            entity.Property(c => c.Purpose).HasDefaultValue((int)VerificationCodePurpose.EmailVerification);
 
             entity.HasOne(c => c.User)
                 .WithMany(u => u.VerificationCodes)
