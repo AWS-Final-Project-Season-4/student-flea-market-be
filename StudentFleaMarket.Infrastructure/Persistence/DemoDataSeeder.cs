@@ -103,9 +103,23 @@ public static class DemoDataSeeder
         List<Item> _,
         CancellationToken ct)
     {
-        // Chỉ seed 1 lần: nếu đã có tin đăng nào thì bỏ qua toàn bộ.
+        // Chỉ seed 1 lần: nếu đã có tin đăng nào thì bỏ qua toàn bộ,
+        // ngoại trừ việc chuẩn hóa tin xe đạp mẫu cũ (2.8tr) sang phụ kiện xe giá sinh viên.
         if (await db.Items.IgnoreQueryFilters().AnyAsync(ct))
+        {
+            var legacyBike = await db.Items.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(i => i.Title == "Xe đạp thể thao Giant Escape", ct);
+            if (legacyBike is not null)
+            {
+                legacyBike.Title = "Giá đỡ điện thoại gắn xe máy";
+                legacyBike.TitleNormalized = SlugHelper.NormalizeForSearch(legacyBike.Title);
+                legacyBike.Price = 120000;
+                legacyBike.Description = BuildDescription(legacyBike.Title, legacyBike.Condition, legacyBike.Location);
+                legacyBike.UpdatedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
+            }
             return;
+        }
 
         var categories = await db.Category.ToDictionaryAsync(c => c.Slug, ct);
         if (categories.Count == 0)
@@ -114,13 +128,13 @@ public static class DemoDataSeeder
         // (SellerKey, Title, CategorySlug, Price, Condition, Exchange, Location, Status, DaysAgo, Images)
         var specs = new (string Seller, string Title, string Cat, decimal Price, int Cond, bool Exchange, string Loc, int Status, int Days, string[] Images)[]
         {
-            // ---------- Sách / Giáo dục ----------
+            // ---------- Sách / Dụng cụ & Tài liệu học tập ----------
             ("minh", "Sach Lap trinh C# co ban",            "sach",                 50000,  2, false, "KTX Khu A",           1, 1,  ["https://picsum.photos/seed/book1/600/600"]),
             ("linh", "Giáo trình Lập trình Web cơ bản",      "sach",                 80000,  3, true,  "KTX Khu B",           1, 2,  ["https://picsum.photos/seed/book2/600/600", "https://picsum.photos/seed/book2b/600/600"]),
             ("tu",   "Sách Lập trình Python cho người mới", "sach",                 65000,  2, false, "Thư viện trường",    1, 3,  ["https://picsum.photos/seed/book3/600/600"]),
-            ("minh", "Bộ đề thi Toán cao cấp",              "giao-duc-tai-lieu",   45000,  3, false, "KTX Khu A",           1, 5,  []),
-            ("linh", "Sổ tay ghi chú bìa da",               "giao-duc-tai-lieu",   25000,  1, true,  "KTX Khu B",           1, 7,  ["https://picsum.photos/seed/note/600/600"]),
-            ("tu",   "Từ điển Anh-Việt sinh viên",         "giao-duc-tai-lieu",   30000,  4, false, "Canteen B",           1, 9,  []),
+            ("minh", "Bộ đề thi Toán cao cấp",              "dung-cu-tai-lieu-hoc-tap", 45000, 3, false, "KTX Khu A",         1, 5,  []),
+            ("linh", "Sổ tay ghi chú bìa da",               "dung-cu-tai-lieu-hoc-tap", 25000, 1, true,  "KTX Khu B",         1, 7,  ["https://picsum.photos/seed/note/600/600"]),
+            ("tu",   "Từ điển Anh-Việt sinh viên",         "dung-cu-tai-lieu-hoc-tap", 30000, 4, false, "Canteen B",         1, 9,  []),
 
             // ---------- Điện tử ----------
             ("tu",   "Bàn phím cơ Keychron K2",             "dien-tu",            650000,  2, false, "KTX Khu C",           1, 2,  ["https://picsum.photos/seed/kb/600/600", "https://picsum.photos/seed/kb2/600/600"]),
@@ -140,9 +154,9 @@ public static class DemoDataSeeder
             ("minh", "Bàn học gỗ gấp gọn",                  "do-gia-dung",        200000,  3, true,  "KTX Khu A",           1, 12, []),
             ("linh", "Quạt điện Senko không dây",            "do-gia-dung",        350000,  2, false, "KTX Khu B",           1, 15, []),
 
-            // ---------- Xe cộ & phụ kiện ----------
-            ("tu",   "Xe đạp thể thao Giant Escape",        "xe-co-phu-kien",    2800000,  3, false, "Nhà xe Khu C",        1, 8,  ["https://picsum.photos/seed/bike/600/600"]),
-            ("minh", "Mũ bảo hiểm scooter",                 "xe-co-phu-kien",     180000,  4, false, "KTX Khu A",           1, 14, []),
+            // ---------- Phụ kiện xe ----------
+            ("tu",   "Giá đỡ điện thoại gắn xe máy",         "phu-kien-xe",        120000,  3, false, "Nhà xe Khu C",        1, 8,  ["https://picsum.photos/seed/motomount/600/600"]),
+            ("minh", "Mũ bảo hiểm scooter",                 "phu-kien-xe",        180000,  4, false, "KTX Khu A",           1, 14, []),
 
             // ---------- Nhạc cụ ----------
             ("linh", "Đàn guitar Yamaha F310",              "nhac-cu",            950000,  3, true,  "Nhà văn hóa",         1, 7,  ["https://picsum.photos/seed/guitar/600/600"]),
@@ -153,7 +167,7 @@ public static class DemoDataSeeder
 
             // ---------- Tặng miễn phí (giá 0) ----------
             ("tu",   "Cho xin sách cũ miễn phí",             "sach",                     0,  4, false, "KTX Khu C",           1, 2,  []),
-            ("linh", "Cho xin túi đựng sách",               "giao-duc-tai-lieu",       0,  3, true,  "KTX Khu B",           1, 9,  []),
+            ("linh", "Cho xin túi đựng sách",               "dung-cu-tai-lieu-hoc-tap", 0, 3, true, "KTX Khu B",           1, 9,  []),
 
             // ---------- Trạng thái khác (dùng để test lọc statuses) ----------
             ("minh", "Laptop cũ đã bán - giá tham khảo",     "dien-tu",            5000000,  5, false, "KTX Khu A",           4, 30, []),

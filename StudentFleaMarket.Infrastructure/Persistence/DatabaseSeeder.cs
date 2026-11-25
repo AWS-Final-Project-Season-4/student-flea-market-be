@@ -105,15 +105,18 @@ public static class DatabaseSeeder
 
     private static async Task SeedCategoriesAsync(AppDbContext db)
     {
+        await MigrateCategoryAsync(db, "giao-duc-tai-lieu", "dung-cu-tai-lieu-hoc-tap", "Dụng cụ & Tài liệu học tập", 2);
+        await MigrateCategoryAsync(db, "xe-co-phu-kien", "phu-kien-xe", "Phụ kiện xe", 7);
+
         var categories = new (string Name, string Slug, int Order)[]
         {
             ("Sách", "sach", 1),
-            ("Giáo dụng & Tài liệu", "giao-duc-tai-lieu", 2),
+            ("Dụng cụ & Tài liệu học tập", "dung-cu-tai-lieu-hoc-tap", 2),
             ("Thời trang", "thoi-trang", 3),
             ("Đồ gia dụng", "do-gia-dung", 4),
             ("Điện tử", "dien-tu", 5),
             ("Thể thao & Sức khỏe", "the-thao-suc-khoe", 6),
-            ("Xe cộ & Phụ kiện", "xe-co-phu-kien", 7),
+            ("Phụ kiện xe", "phu-kien-xe", 7),
             ("Nhạc cụ", "nhac-cu", 8),
             ("Khác", "khac", 9)
         };
@@ -136,5 +139,46 @@ public static class DatabaseSeeder
 
         db.Category.AddRange(missing);
         await db.SaveChangesAsync();
+    }
+
+    private static async Task MigrateCategoryAsync(
+        AppDbContext db,
+        string legacySlug,
+        string targetSlug,
+        string targetName,
+        int targetOrder)
+    {
+        var legacyCat = await db.Category.FirstOrDefaultAsync(c => c.Slug == legacySlug);
+        var targetCat = await db.Category.FirstOrDefaultAsync(c => c.Slug == targetSlug);
+
+        if (legacyCat is not null)
+        {
+            if (targetCat is null)
+            {
+                legacyCat.Name = targetName;
+                legacyCat.Slug = targetSlug;
+                legacyCat.Order = targetOrder;
+            }
+            else
+            {
+                var legacyItems = await db.Items.IgnoreQueryFilters()
+                    .Where(i => i.CategoryId == legacyCat.Id)
+                    .ToListAsync();
+                foreach (var item in legacyItems)
+                {
+                    item.CategoryId = targetCat.Id;
+                }
+                db.Category.Remove(legacyCat);
+            }
+
+            await db.SaveChangesAsync();
+            return;
+        }
+
+        if (targetCat is not null && targetCat.Name != targetName)
+        {
+            targetCat.Name = targetName;
+            await db.SaveChangesAsync();
+        }
     }
 }
