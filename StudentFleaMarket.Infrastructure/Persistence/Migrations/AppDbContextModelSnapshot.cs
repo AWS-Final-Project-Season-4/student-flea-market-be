@@ -811,10 +811,16 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ItemId")
                         .HasColumnType("uuid");
 
+                    b.Property<double?>("MeetingLatitude")
+                        .HasColumnType("double precision");
+
                     b.Property<string>("MeetingLocation")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<double?>("MeetingLongitude")
+                        .HasColumnType("double precision");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");

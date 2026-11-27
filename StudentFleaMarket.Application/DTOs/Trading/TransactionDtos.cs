@@ -26,6 +26,12 @@ public class CreatePurchaseTransactionDto
     /// </summary>
     public string? MeetingLocation { get; set; }
 
+    /// <summary>Vĩ độ địa điểm giao nhận.</summary>
+    public double? MeetingLatitude { get; set; }
+
+    /// <summary>Kinh độ địa điểm giao nhận.</summary>
+    public double? MeetingLongitude { get; set; }
+
     /// <summary>
     /// Phương thức thanh toán: 1 = Cod (tiền mặt khi gặp), 2 = BankTransfer (QR / cổng thanh toán).
     /// Mặc định 1 (Cod).
@@ -52,6 +58,23 @@ public class CreatePurchaseTransactionDtoValidator : AbstractValidator<CreatePur
             .MinimumLength(2).WithMessage("Địa điểm gặp mặt phải có ít nhất 2 ký tự.")
             .MaximumLength(255).WithMessage("Địa điểm gặp mặt không được vượt quá 255 ký tự.")
             .When(x => !string.IsNullOrWhiteSpace(x.MeetingLocation));
+
+        RuleFor(x => x.MeetingLatitude)
+            .Must(v => !v.HasValue || (double.IsFinite(v.Value) && v.Value >= -90d && v.Value <= 90d))
+            .WithMessage("Vĩ độ không hợp lệ.");
+
+        RuleFor(x => x.MeetingLongitude)
+            .Must(v => !v.HasValue || (double.IsFinite(v.Value) && v.Value >= -180d && v.Value <= 180d))
+            .WithMessage("Kinh độ không hợp lệ.");
+
+        RuleFor(x => x)
+            .Must(x => x.MeetingLatitude.HasValue == x.MeetingLongitude.HasValue)
+            .WithMessage("Phải cung cấp đầy đủ vĩ độ và kinh độ.");
+
+        RuleFor(x => x.MeetingLocation)
+            .NotEmpty()
+            .WithMessage("Phải nhập địa chỉ khi cung cấp tọa độ.")
+            .When(x => x.MeetingLatitude.HasValue || x.MeetingLongitude.HasValue);
 
         RuleFor(x => x.PaymentMethod)
             .Must(m => Enum.IsDefined(typeof(PaymentMethod), m))
@@ -80,6 +103,12 @@ public class CreateExchangeTransactionDto
     /// </summary>
     public string? MeetingLocation { get; set; }
 
+    /// <summary>Vĩ độ địa điểm giao nhận.</summary>
+    public double? MeetingLatitude { get; set; }
+
+    /// <summary>Kinh độ địa điểm giao nhận.</summary>
+    public double? MeetingLongitude { get; set; }
+
     /// <summary>
     /// Phương thức thanh toán tiền bù chênh lệch: 1 = Cod, 2 = BankTransfer.
     /// Mặc định 1 (Cod).
@@ -104,6 +133,23 @@ public class CreateExchangeTransactionDtoValidator : AbstractValidator<CreateExc
             .MinimumLength(2).WithMessage("Địa điểm gặp mặt phải có ít nhất 2 ký tự.")
             .MaximumLength(255).WithMessage("Địa điểm gặp mặt không được vượt quá 255 ký tự.")
             .When(x => !string.IsNullOrWhiteSpace(x.MeetingLocation));
+
+        RuleFor(x => x.MeetingLatitude)
+            .Must(v => !v.HasValue || (double.IsFinite(v.Value) && v.Value >= -90d && v.Value <= 90d))
+            .WithMessage("Vĩ độ không hợp lệ.");
+
+        RuleFor(x => x.MeetingLongitude)
+            .Must(v => !v.HasValue || (double.IsFinite(v.Value) && v.Value >= -180d && v.Value <= 180d))
+            .WithMessage("Kinh độ không hợp lệ.");
+
+        RuleFor(x => x)
+            .Must(x => x.MeetingLatitude.HasValue == x.MeetingLongitude.HasValue)
+            .WithMessage("Phải cung cấp đầy đủ vĩ độ và kinh độ.");
+
+        RuleFor(x => x.MeetingLocation)
+            .NotEmpty()
+            .WithMessage("Phải nhập địa chỉ khi cung cấp tọa độ.")
+            .When(x => x.MeetingLatitude.HasValue || x.MeetingLongitude.HasValue);
 
         RuleFor(x => x.PaymentMethod)
             .Must(m => Enum.IsDefined(typeof(PaymentMethod), m))
@@ -222,6 +268,10 @@ public class TransactionDto
 
     /// <summary>Địa điểm gặp mặt giao dịch.</summary>
     public string MeetingLocation { get; init; } = null!;
+
+    public double? MeetingLatitude { get; init; }
+
+    public double? MeetingLongitude { get; init; }
 
     /// <summary>Thông tin thanh toán (null nếu đơn giá 0 / không cần thanh toán).</summary>
     public PaymentDto? Payment { get; init; }

@@ -115,9 +115,11 @@ public class TransactionService : ITransactionService
             Amount = amount,
             Status = (int)TransactionStatus.Pending,
             MeetingLocation = string.IsNullOrWhiteSpace(request.MeetingLocation)
-                ? item.Location
-                : request.MeetingLocation.Trim(),
-            CreatedAt = DateTime.UtcNow
+    ? item.Location
+    : request.MeetingLocation.Trim(),
+MeetingLatitude = request.MeetingLatitude,
+MeetingLongitude = request.MeetingLongitude,
+CreatedAt = DateTime.UtcNow
         };
 
         await _txRepo.AddAsync(transaction, ct);
@@ -221,9 +223,11 @@ public class TransactionService : ITransactionService
             Amount = amount,
             Status = (int)TransactionStatus.Pending,
             MeetingLocation = string.IsNullOrWhiteSpace(request.MeetingLocation)
-                ? requestedItem.Location
-                : request.MeetingLocation.Trim(),
-            CreatedAt = DateTime.UtcNow
+    ? requestedItem.Location
+    : request.MeetingLocation.Trim(),
+MeetingLatitude = request.MeetingLatitude,
+MeetingLongitude = request.MeetingLongitude,
+CreatedAt = DateTime.UtcNow
         };
 
         await _txRepo.AddAsync(transaction, ct);
@@ -837,6 +841,8 @@ public class TransactionService : ITransactionService
             ExchangeRequestId = tx.ExchangeRequestId,
             Amount = tx.Amount,
             MeetingLocation = tx.MeetingLocation,
+            MeetingLatitude = tx.MeetingLatitude,
+            MeetingLongitude = tx.MeetingLongitude,
             Payment = tx.Payment is null ? null : MapPayment(tx.Payment, tx.Payment.Payer?.FullName ?? ""),
             CreatedAt = tx.CreatedAt,
             CompletedAt = tx.CompletedAt,

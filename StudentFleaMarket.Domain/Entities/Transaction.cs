@@ -50,6 +50,12 @@ public class Transaction
     /// <summary>Địa điểm gặp mặt để giao dịch trực tiếp (vd: "KTX Khu A").</summary>
     public string MeetingLocation { get; set; } = null!;
 
+    /// <summary>Vĩ độ địa điểm giao nhận.</summary>
+    public double? MeetingLatitude { get; set; }
+
+    /// <summary>Kinh độ địa điểm giao nhận.</summary>
+    public double? MeetingLongitude { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>Thời điểm hoàn thành giao dịch.</summary>
