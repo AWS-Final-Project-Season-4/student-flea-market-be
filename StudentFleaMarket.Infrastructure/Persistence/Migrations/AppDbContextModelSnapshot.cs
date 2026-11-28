@@ -577,6 +577,10 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("PayerId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ProofImageUrl")
+                        .HasMaxLength(350000)
+                        .HasColumnType("character varying(350000)");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
@@ -861,6 +865,9 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<DateTime?>("AutoCompleteAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("CancelReason")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -926,6 +933,8 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AutoCompleteAt");
 
                     b.HasIndex("CounterpartyId");
 

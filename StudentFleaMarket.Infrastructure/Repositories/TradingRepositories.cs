@@ -130,6 +130,7 @@ public class TransactionRepository : EfRepository<Transaction>, ITransactionRepo
             .Include(t => t.ExchangeRequest).ThenInclude(er => er!.OfferedItem).ThenInclude(i => i.Images)
             .Include(t => t.ExchangeRequest).ThenInclude(er => er!.OfferedItem).ThenInclude(i => i.Seller)
             .Include(t => t.Payment).ThenInclude(p => p!.Payer)
+            .Include(t => t.Confirmations)
             .FirstOrDefaultAsync(t => t.Id == id, ct);
 
     public Task<Transaction?> GetTrackedDetailAsync(Guid id, CancellationToken ct = default)
@@ -142,6 +143,7 @@ public class TransactionRepository : EfRepository<Transaction>, ITransactionRepo
             .Include(t => t.ExchangeRequest).ThenInclude(er => er!.OfferedItem).ThenInclude(i => i.Images)
             .Include(t => t.ExchangeRequest).ThenInclude(er => er!.OfferedItem).ThenInclude(i => i.Seller)
             .Include(t => t.Payment).ThenInclude(p => p!.Payer)
+            .Include(t => t.Confirmations)
             .FirstOrDefaultAsync(t => t.Id == id, ct);
 
     public async Task<(List<Transaction> Transactions, int TotalCount)> ListForUserAsync(
@@ -185,6 +187,7 @@ public class TransactionRepository : EfRepository<Transaction>, ITransactionRepo
             .Include(t => t.ExchangeRequest).ThenInclude(er => er!.OfferedItem).ThenInclude(i => i.Images)
             .Include(t => t.ExchangeRequest).ThenInclude(er => er!.OfferedItem).ThenInclude(i => i.Seller)
             .Include(t => t.Payment).ThenInclude(p => p!.Payer)
+            .Include(t => t.Confirmations)
             .OrderByDescending(t => t.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -243,6 +246,16 @@ public class TransactionRepository : EfRepository<Transaction>, ITransactionRepo
             .Where(t => t.Status == (int)TransactionStatus.Completed
                      && (t.InitiatorId == userId || t.CounterpartyId == userId))
             .OrderByDescending(t => t.CompletedAt)
+            .ToListAsync(ct);
+
+    public Task<List<Transaction>> GetExpiredAutoCompleteAsync(
+        DateTime nowUtc,
+        CancellationToken ct = default)
+        => DbSet
+            .Where(t => t.AutoCompleteAt.HasValue
+                     && t.AutoCompleteAt.Value <= nowUtc
+                     && (t.Status == (int)TransactionStatus.Delivering
+                         || t.Status == (int)TransactionStatus.AwaitingConfirmation))
             .ToListAsync(ct);
 }
 

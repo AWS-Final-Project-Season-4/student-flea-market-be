@@ -288,6 +288,8 @@ CreatedAt = DateTime.UtcNow
         Guid viewerId,
         CancellationToken ct = default)
     {
+        await AutoCompleteExpiredAsync(ct);
+
         var tx = await _txRepo.GetDetailAsync(transactionId, ct)
             ?? throw new NotFoundException("Không tìm thấy đơn giao dịch.", "TRANSACTION_NOT_FOUND");
 
@@ -301,6 +303,8 @@ CreatedAt = DateTime.UtcNow
         TransactionQueryDto query,
         CancellationToken ct = default)
     {
+        await AutoCompleteExpiredAsync(ct);
+
         var (transactions, total) = await _txRepo.ListForUserAsync(userId, query, ct);
 
         return new PagedResult<TransactionDto>
@@ -406,6 +410,7 @@ CreatedAt = DateTime.UtcNow
             tx.TrackingCode = request.TrackingCode.Trim();
 
         tx.Status = (int)TransactionStatus.Delivering;
+        tx.AutoCompleteAt = DateTime.UtcNow.AddHours(72);
         _txRepo.Update(tx);
         await _txRepo.SaveChangesAsync(ct);
 
@@ -467,6 +472,7 @@ CreatedAt = DateTime.UtcNow
             // endpoint /handover — nếu ghi nhận ở đây thì bên bấm "Hoàn tất"
             // sẽ tự động "xác nhận đúng món" mà không hề kiểm tra mã.
             tx.Status = (int)TransactionStatus.AwaitingConfirmation;
+            tx.AutoCompleteAt = DateTime.UtcNow.AddHours(48);
 
             _txRepo.Update(tx);
             await _txRepo.SaveChangesAsync(ct);
@@ -487,6 +493,7 @@ CreatedAt = DateTime.UtcNow
 
         tx.Status = (int)TransactionStatus.Completed;
         tx.CompletedAt = DateTime.UtcNow;
+        tx.AutoCompleteAt = null;
 
         _txRepo.Update(tx);
         await _txRepo.SaveChangesAsync(ct);
@@ -580,6 +587,7 @@ CreatedAt = DateTime.UtcNow
             tx.Status = (int)TransactionStatus.Rejected;
             tx.CancelledAt = DateTime.UtcNow;
             tx.CancelReason = tx.InspectionNote;
+            tx.AutoCompleteAt = null;
             _txRepo.Update(tx);
             await _txRepo.SaveChangesAsync(ct);
 
@@ -622,6 +630,7 @@ CreatedAt = DateTime.UtcNow
             // Cả 2 bên đã xác nhận (đồng kiểm OK + nhận đủ tiền/hàng) -> hoàn thành thật sự.
             tx.Status = (int)TransactionStatus.Completed;
             tx.CompletedAt = DateTime.UtcNow;
+            tx.AutoCompleteAt = null;
             if (!string.IsNullOrWhiteSpace(cleanNote))
                 tx.InspectionNote = cleanNote;
 
@@ -651,35 +660,42 @@ CreatedAt = DateTime.UtcNow
                 }
             }
 
+            var actor = userId == tx.InitiatorId ? tx.Initiator : tx.Counterparty;
+            var recipient = userId == tx.InitiatorId ? tx.Counterparty : tx.Initiator;
+
             await NotifyCounterpartyAsync(
-                tx.Counterparty?.Email,
-                tx.Counterparty?.FullName,
-                tx.Initiator?.FullName ?? "",
+                recipient?.Email,
+                recipient?.FullName,
+                actor?.FullName ?? "",
                 tx.Item?.Title ?? "",
                 tx.Type,
                 ct,
                 subject: "Giao dịch đã hoàn thành",
-                intro: "Cả hai bên đã xác nhận bàn giao & đồng kiểm món đồ <b>{0}</b>. Giao dịch hoàn thành.",
+                intro: "Cả hai bên đã xác nhận bàn giao & đồng kiểm món đồ <b>{1}</b> (cùng với {0}). Giao dịch hoàn thành.",
                 itemCode: tx.Item?.ItemCode);
         }
         else
         {
-            // Chỉ 1 bên xác nhận -> chờ bên kia xác nhận hoàn tất.
+            // Chỉ 1 bên xác nhận -> chờ bên kia xác nhận hoàn tất (hết 48h không phản hồi tự Done).
             tx.Status = (int)TransactionStatus.AwaitingConfirmation;
+            tx.AutoCompleteAt = DateTime.UtcNow.AddHours(48);
             if (!string.IsNullOrWhiteSpace(cleanNote))
                 tx.InspectionNote = cleanNote;
             _txRepo.Update(tx);
             await _txRepo.SaveChangesAsync(ct);
 
+            var actor = userId == tx.InitiatorId ? tx.Initiator : tx.Counterparty;
+            var recipient = userId == tx.InitiatorId ? tx.Counterparty : tx.Initiator;
+
             await NotifyCounterpartyAsync(
-                tx.Counterparty?.Email,
-                tx.Counterparty?.FullName,
-                tx.Initiator?.FullName ?? "",
+                recipient?.Email,
+                recipient?.FullName,
+                actor?.FullName ?? "",
                 tx.Item?.Title ?? "",
                 tx.Type,
                 ct,
                 subject: "Giao dịch đang chờ bạn xác nhận đồng kiểm",
-                intro: "Một bên đã xác nhận đồng kiểm món đồ <b>{0}</b>. Vui lòng xác nhận để hoàn tất đơn hàng.",
+                intro: "<b>{0}</b> đã xác nhận đồng kiểm món đồ <b>{1}</b>. Vui lòng xác nhận để hoàn tất đơn hàng.",
                 itemCode: tx.Item?.ItemCode);
         }
 
@@ -831,6 +847,7 @@ CreatedAt = DateTime.UtcNow
         tx.Status = (int)TransactionStatus.Cancelled;
         tx.CancelledAt = DateTime.UtcNow;
         tx.CancelReason = string.IsNullOrWhiteSpace(request?.Reason) ? null : request.Reason.Trim();
+        tx.AutoCompleteAt = null;
 
         _txRepo.Update(tx);
         await _txRepo.SaveChangesAsync(ct);
@@ -870,7 +887,11 @@ CreatedAt = DateTime.UtcNow
                 "Chỉ người trả tiền mới có thể xác nhận thanh toán.",
                 "NOT_PAYMENT_PAYER");
 
-        if ((TransactionStatus)tx.Status is not (TransactionStatus.Pending or TransactionStatus.Accepted or TransactionStatus.Delivering))
+        if ((TransactionStatus)tx.Status is not (
+            TransactionStatus.Pending
+            or TransactionStatus.Accepted
+            or TransactionStatus.Delivering
+            or TransactionStatus.AwaitingConfirmation))
             throw new ConflictException(
                 $"Đơn giao dịch đang ở trạng thái \"{TransactionLabels.StatusName(tx.Status)}\" nên không thể xác nhận thanh toán.",
                 "TRANSACTION_NOT_PENDING");
@@ -878,7 +899,8 @@ CreatedAt = DateTime.UtcNow
         var payment = await _paymentRepo.GetByTransactionAsync(tx.Id, ct)
             ?? throw new NotFoundException("Đơn giao dịch này không có thông tin thanh toán.", "PAYMENT_NOT_FOUND");
 
-        if (payment.Status == (int)PaymentStatus.Paid)
+        var hasProofImage = !string.IsNullOrWhiteSpace(request?.ProofImageUrl);
+        if (payment.Status == (int)PaymentStatus.Paid && !hasProofImage)
             throw new ConflictException(
                 "Giao dịch này đã được đánh dấu thanh toán rồi.",
                 "PAYMENT_ALREADY_PAID");
@@ -887,10 +909,13 @@ CreatedAt = DateTime.UtcNow
             ?? throw new NotFoundException("Không tìm thấy thông tin thanh toán.", "PAYMENT_NOT_FOUND");
 
         trackedPayment.Status = (int)PaymentStatus.Paid;
-        trackedPayment.PaidAt = DateTime.UtcNow;
+        trackedPayment.PaidAt ??= DateTime.UtcNow;
 
         if (!string.IsNullOrWhiteSpace(request?.TransactionRef))
             trackedPayment.TransactionRef = request.TransactionRef.Trim();
+
+        if (hasProofImage)
+            trackedPayment.ProofImageUrl = request!.ProofImageUrl!.Trim();
 
         var payerName = tx.Initiator?.FullName ?? "";
 
@@ -912,6 +937,50 @@ CreatedAt = DateTime.UtcNow
             intro: "Người mua <b>{0}</b> đã thanh toán cho món đồ <b>{1}</b>.");
 
         return MapPayment(trackedPayment, payerName);
+    }
+
+    public async Task<int> AutoCompleteExpiredAsync(CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var expired = await _txRepo.GetExpiredAutoCompleteAsync(now, ct);
+        if (expired.Count == 0)
+            return 0;
+
+        foreach (var tx in expired)
+        {
+            tx.Status = (int)TransactionStatus.Completed;
+            tx.CompletedAt = now;
+            tx.AutoCompleteAt = null;
+            if (string.IsNullOrWhiteSpace(tx.InspectionNote))
+                tx.InspectionNote = "Hệ thống tự động hoàn tất do quá hạn không có phản hồi.";
+
+            _txRepo.Update(tx);
+            await _txRepo.SaveChangesAsync(ct);
+
+            await MarkPaymentPaidIfPendingAsync(tx.Id, ct);
+
+            var item = await _itemRepo.GetByIdAsync(tx.ItemId, ct);
+            if (item is not null && item.Status == (int)ItemStatus.Available)
+                await MarkItemSoldAsync(item, tx, ct);
+
+            if (tx.ExchangeRequestId.HasValue)
+            {
+                var er = await _erRepo.GetDetailAsync(tx.ExchangeRequestId.Value, ct);
+                if (er?.OfferedItem is not null)
+                {
+                    var offered = await _itemRepo.GetByIdAsync(er.OfferedItem.Id, ct);
+                    if (offered is not null && offered.Status == (int)ItemStatus.Available)
+                    {
+                        offered.Status = (int)ItemStatus.Sold;
+                        offered.UpdatedAt = now;
+                        _itemRepo.Update(offered);
+                        await _itemRepo.SaveChangesAsync(ct);
+                    }
+                }
+            }
+        }
+
+        return expired.Count;
     }
 
     // =====================================================================
@@ -1009,6 +1078,7 @@ CreatedAt = DateTime.UtcNow
             DeliveryCarrier = tx.DeliveryCarrier,
             TrackingCode = tx.TrackingCode,
             InspectionNote = tx.InspectionNote,
+            AutoCompleteAt = tx.AutoCompleteAt,
             Payment = tx.Payment is null ? null : MapPayment(tx.Payment, tx.Payment.Payer?.FullName ?? ""),
             CreatedAt = tx.CreatedAt,
             CompletedAt = tx.CompletedAt,
@@ -1019,7 +1089,9 @@ CreatedAt = DateTime.UtcNow
                         || tx.Status == (int)TransactionStatus.Accepted
                         || tx.Status == (int)TransactionStatus.Delivering
                         || tx.Status == (int)TransactionStatus.AwaitingConfirmation)
-                        && (tx.InitiatorId == viewerId || tx.CounterpartyId == viewerId)
+                        && (tx.InitiatorId == viewerId || tx.CounterpartyId == viewerId),
+            HasUserConfirmed = tx.Confirmations.Any(c => c.UserId == viewerId),
+            ConfirmedCount = tx.Confirmations.Count
         };
     }
 
@@ -1075,6 +1147,7 @@ CreatedAt = DateTime.UtcNow
         TransactionRef = payment.TransactionRef,
         PayerId = payment.PayerId,
         PayerName = payerName,
+        ProofImageUrl = payment.ProofImageUrl,
         PaidAt = payment.PaidAt,
         CreatedAt = payment.CreatedAt
     };

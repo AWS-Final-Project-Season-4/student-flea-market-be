@@ -110,6 +110,13 @@ public interface ITransactionRepository : IRepository<Transaction>
     Task<List<Transaction>> ListCompletedWithReviewsAsync(
         Guid userId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Lấy các đơn đang giao hoặc chờ xác nhận đã quá hạn AutoCompleteAt để tự động hoàn tất.
+    /// </summary>
+    Task<List<Transaction>> GetExpiredAutoCompleteAsync(
+        DateTime nowUtc,
+        CancellationToken ct = default);
 }
 
 /// <summary>

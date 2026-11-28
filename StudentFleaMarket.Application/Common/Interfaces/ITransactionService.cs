@@ -120,4 +120,9 @@ public interface ITransactionService
         Guid userId,
         Guid transactionId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Tự động hoàn tất các đơn đã hết hạn chờ phản hồi.
+    /// </summary>
+    Task<int> AutoCompleteExpiredAsync(CancellationToken ct = default);
 }

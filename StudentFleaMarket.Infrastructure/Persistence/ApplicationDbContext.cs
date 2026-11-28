@@ -273,6 +273,7 @@ public class AppDbContext: DbContext
             entity.Property(t => t.DeliveryCarrier).HasMaxLength(100);
             entity.Property(t => t.TrackingCode).HasMaxLength(100);
             entity.Property(t => t.InspectionNote).HasMaxLength(500);
+            entity.HasIndex(t => t.AutoCompleteAt);
             entity.Property(t => t.CancelReason).HasMaxLength(500);
 
             // Index phục vụ lọc theo trạng thái / loại / thời điểm tạo.
@@ -310,6 +311,7 @@ public class AppDbContext: DbContext
             entity.HasKey(p => p.Id);
             entity.Property(p => p.Amount).HasPrecision(18, 2);
             entity.Property(p => p.TransactionRef).IsRequired().HasMaxLength(150);
+            entity.Property(p => p.ProofImageUrl).HasMaxLength(350000);
 
             // Index phục vụ đối soát giao dịch chuyển khoản.
             entity.HasIndex(p => p.TransactionRef);

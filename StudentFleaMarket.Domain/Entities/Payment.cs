@@ -40,6 +40,9 @@ public class Payment
     /// <summary>Thời điểm thanh toán thành công.</summary>
     public DateTime? PaidAt { get; set; }
 
+    /// <summary>Ảnh chụp bill chuyển khoản VietQR (nếu có).</summary>
+    public string? ProofImageUrl { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation Properties

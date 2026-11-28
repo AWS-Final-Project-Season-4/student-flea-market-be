@@ -69,6 +69,9 @@ public class Transaction
     /// <summary>Ghi chú kết quả đồng kiểm hoặc lý do từ chối nhận khi kiểm hàng.</summary>
     public string? InspectionNote { get; set; }
 
+    /// <summary>Mốc tự động hoàn tất nếu một/hai bên quên không phản hồi.</summary>
+    public DateTime? AutoCompleteAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>Thời điểm hoàn thành giao dịch.</summary>

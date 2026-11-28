@@ -65,6 +65,7 @@ else
 // --------------------------------------------------------- Application services
 builder.Services.AddApplicationServices();
 builder.Services.AddMediaStorage(builder.Configuration);
+builder.Services.AddHostedService<StudentFleaMarket.API.BackgroundServices.TransactionAutoCompleteWorker>();
 
 // ---------------------------------------------------------------------- Auth
 var jwtSection = builder.Configuration.GetSection("Jwt");

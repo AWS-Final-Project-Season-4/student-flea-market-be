@@ -214,6 +214,9 @@ public class ConfirmPaymentDto
     /// Bỏ trống -> giữ mã hệ thống sinh sẵn.
     /// </summary>
     public string? TransactionRef { get; set; }
+
+    /// <summary>Ảnh bill chuyển khoản (Data URL nén hoặc link ảnh).</summary>
+    public string? ProofImageUrl { get; set; }
 }
 
 public class ConfirmPaymentDtoValidator : AbstractValidator<ConfirmPaymentDto>
@@ -223,6 +226,10 @@ public class ConfirmPaymentDtoValidator : AbstractValidator<ConfirmPaymentDto>
         RuleFor(x => x.TransactionRef)
             .MaximumLength(150).WithMessage("Mã tham chiếu không được vượt quá 150 ký tự.")
             .When(x => !string.IsNullOrWhiteSpace(x.TransactionRef));
+
+        RuleFor(x => x.ProofImageUrl)
+            .MaximumLength(350_000).WithMessage("Dung lượng ảnh bill vượt quá giới hạn cho phép.")
+            .When(x => !string.IsNullOrWhiteSpace(x.ProofImageUrl));
     }
 }
 
@@ -343,6 +350,7 @@ public class PaymentDto
     public Guid PayerId { get; init; }
     public string PayerName { get; init; } = null!;
 
+    public string? ProofImageUrl { get; init; }
     public DateTime? PaidAt { get; init; }
     public DateTime CreatedAt { get; init; }
 }
@@ -395,6 +403,7 @@ public class TransactionDto
     public string? DeliveryCarrier { get; init; }
     public string? TrackingCode { get; init; }
     public string? InspectionNote { get; init; }
+    public DateTime? AutoCompleteAt { get; init; }
 
     /// <summary>Thông tin thanh toán (null nếu đơn giá 0 / không cần thanh toán).</summary>
     public PaymentDto? Payment { get; init; }
@@ -408,6 +417,12 @@ public class TransactionDto
 
     /// <summary>Người đang xem có quyền thao tác (complete / cancel) lên đơn này không.</summary>
     public bool CanManage { get; init; }
+
+    /// <summary>Người đang xem đã bấm xác nhận đồng kiểm / bàn giao chưa.</summary>
+    public bool HasUserConfirmed { get; init; }
+
+    /// <summary>Số bên đã xác nhận đồng kiểm / bàn giao (0, 1 hoặc 2).</summary>
+    public int ConfirmedCount { get; init; }
 }
 
 /// <summary>
@@ -470,9 +485,9 @@ public static class TransactionLabels
 
     public static string PaymentMethodName(int method) => method switch
     {
-        (int)PaymentMethod.Cod => "Tiền mặt khi gặp (COD)",
-        (int)PaymentMethod.BankTransfer => "Chuyển khoản QR ngân hàng / cổng thanh toán",
-        _ => "Không xác định"
+        (int)PaymentMethod.Cod => "Thanh toán khi nhận hàng (Tiền mặt / VietQR)",
+        (int)PaymentMethod.BankTransfer => "Chuyển khoản VietQR khi nhận hàng",
+        _ => "Thanh toán khi nhận hàng"
     };
 
     public static string PaymentStatusName(int status) => status switch
