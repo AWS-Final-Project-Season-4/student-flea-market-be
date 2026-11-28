@@ -36,6 +36,9 @@ public class SendMessageDto
 {
     /// <summary>Nội dung tin nhắn (tối đa 1000 ký tự).</summary>
     public string Content { get; set; } = null!;
+
+    /// <summary>Id tin nhắn được trả lời (nếu có).</summary>
+    public Guid? ReplyToMessageId { get; set; }
 }
 
 public class SendMessageDtoValidator : AbstractValidator<SendMessageDto>
@@ -46,6 +49,63 @@ public class SendMessageDtoValidator : AbstractValidator<SendMessageDto>
             .NotEmpty().WithMessage("Nội dung tin nhắn không được để trống.")
             .MaximumLength(1000).WithMessage("Nội dung tin nhắn không được vượt quá 1000 ký tự.");
     }
+}
+
+/// <summary>
+/// Chỉnh sửa nội dung tin nhắn đã gửi.
+/// </summary>
+public class EditMessageDto
+{
+    /// <summary>Nội dung mới (tối đa 1000 ký tự).</summary>
+    public string Content { get; set; } = null!;
+}
+
+public class EditMessageDtoValidator : AbstractValidator<EditMessageDto>
+{
+    public EditMessageDtoValidator()
+    {
+        RuleFor(x => x.Content)
+            .NotEmpty().WithMessage("Nội dung tin nhắn không được để trống.")
+            .MaximumLength(1000).WithMessage("Nội dung tin nhắn không được vượt quá 1000 ký tự.");
+    }
+}
+
+/// <summary>
+/// Thả hoặc gỡ cảm xúc (react emoji) lên một tin nhắn.
+/// </summary>
+public class ReactMessageDto
+{
+    public string Emoji { get; set; } = null!;
+}
+
+public class ReactMessageDtoValidator : AbstractValidator<ReactMessageDto>
+{
+    public ReactMessageDtoValidator()
+    {
+        RuleFor(x => x.Emoji)
+            .NotEmpty().WithMessage("Vui lòng chọn biểu tượng cảm xúc.")
+            .MaximumLength(16).WithMessage("Biểu tượng cảm xúc không hợp lệ.");
+    }
+}
+
+public class MessageReactionDto
+{
+    public Guid UserId { get; init; }
+    public string UserName { get; init; } = null!;
+    public string Emoji { get; init; } = null!;
+    public DateTime ReactedAt { get; init; }
+}
+
+/// <summary>
+/// Thông tin tóm tắt của tin nhắn gốc được trích dẫn khi trả lời.
+/// </summary>
+public class ReplyPreviewDto
+{
+    public Guid Id { get; init; }
+    public Guid SenderId { get; init; }
+    public string SenderName { get; init; } = null!;
+    public string? Content { get; init; }
+    public bool IsDeleted { get; init; }
 }
 
 // ============================================================ RESPONSE (đầu ra)
@@ -70,7 +130,7 @@ public class MessageDto
     /// <summary>Nội dung tin nhắn. Nếu tin đã bị xoá thì trả về null.</summary>
     public string? Content { get; init; }
 
-    /// <summary>Tin nhắn đã bị xoá hay không (soft delete).</summary>
+    /// <summary>Tin nhắn đã bị xoá/thu hồi hay không.</summary>
     public bool IsDeleted { get; init; }
 
     /// <summary>Bên nhận đã đọc tin này chưa.</summary>
@@ -81,6 +141,30 @@ public class MessageDto
 
     /// <summary>Thời điểm được đọc (null = chưa đọc).</summary>
     public DateTime? ReadAt { get; init; }
+
+    /// <summary>Thời điểm chỉnh sửa nội dung lần cuối (null = chưa chỉnh sửa).</summary>
+    public DateTime? EditedAt { get; init; }
+
+    /// <summary>Tin nhắn có đang được ghim trong hội thoại hay không.</summary>
+    public bool IsPinned { get; init; }
+
+    /// <summary>Thời điểm ghim tin nhắn.</summary>
+    public DateTime? PinnedAt { get; init; }
+
+    /// <summary>Id người ghim tin nhắn.</summary>
+    public Guid? PinnedById { get; init; }
+
+    /// <summary>Tên người ghim tin nhắn.</summary>
+    public string? PinnedByName { get; init; }
+
+    /// <summary>Id tin nhắn được trả lời (nếu có).</summary>
+    public Guid? ReplyToMessageId { get; init; }
+
+    /// <summary>Thông tin tin nhắn gốc được trả lời (nếu có).</summary>
+    public ReplyPreviewDto? ReplyTo { get; init; }
+
+    /// <summary>Danh sách cảm xúc (react emoji) trên tin nhắn.</summary>
+    public List<MessageReactionDto> Reactions { get; init; } = new();
 }
 
 /// <summary>

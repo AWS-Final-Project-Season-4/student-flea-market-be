@@ -39,6 +39,7 @@ public class ReportService : IReportService
     private readonly IItemRepository _itemRepo;
     private readonly ITransactionRepository _txRepo;
     private readonly IChatRepository _chatRepo;
+    private readonly IMessageRepository _messageRepo;
     private readonly IUserRepository _userRepo;
 
     public ReportService(
@@ -46,12 +47,14 @@ public class ReportService : IReportService
         IItemRepository itemRepo,
         ITransactionRepository txRepo,
         IChatRepository chatRepo,
+        IMessageRepository messageRepo,
         IUserRepository userRepo)
     {
         _reportRepo = reportRepo;
         _itemRepo = itemRepo;
         _txRepo = txRepo;
         _chatRepo = chatRepo;
+        _messageRepo = messageRepo;
         _userRepo = userRepo;
     }
 
@@ -65,7 +68,7 @@ public class ReportService : IReportService
     {
         var item = await ResolveItemAsync(request, ct);
         var transaction = await ResolveTransactionAsync(reporterId, request, ct);
-        var conversation = await ResolveConversationAsync(reporterId, request, ct);
+        var (conversation, reportedMessage) = await ResolveConversationAndMessageAsync(reporterId, request, ct);
 
         // Người bị report là BÊN CÒN LẠI của người báo (không phải của người
         // khởi tạo đơn). Nếu lấy nhầm theo Initiator/Counterparty cố định thì
@@ -76,7 +79,7 @@ public class ReportService : IReportService
             reportedUserId = item.SellerId;
 
         // Chặn spam: 1 người chỉ report 1 lần cho mỗi đối tượng.
-        await EnsureNotDuplicateAsync(reporterId, request, item, transaction, conversation, ct);
+        await EnsureNotDuplicateAsync(reporterId, item, transaction, conversation, reportedMessage, ct);
 
         var report = new Report
         {
@@ -86,6 +89,8 @@ public class ReportService : IReportService
             ItemId = item?.Id,
             TransactionId = transaction?.Id,
             ConversationId = conversation?.Id,
+            MessageId = reportedMessage?.Id,
+            MessageEvidence = reportedMessage?.Content,
             Reason = request.Reason,
             Description = request.Description.Trim(),
             Status = (int)ReportStatus.Pending,
@@ -233,18 +238,35 @@ public class ReportService : IReportService
     }
 
     /// <summary>
-    /// Xác định hội thoại liên quan (nếu có) và kiểm tra người báo có thực sự
-    /// tham gia hội thoại không (chống report oan).
+    /// Xác định hội thoại và tin nhắn vi phạm liên quan (nếu có), đồng thời kiểm
+    /// tra người báo thực sự tham gia hội thoại (chống report oan).
     /// </summary>
-    private async Task<Conversation?> ResolveConversationAsync(
+    private async Task<(Conversation? Conversation, Message? Message)> ResolveConversationAndMessageAsync(
         Guid reporterId,
         CreateReportDto request,
         CancellationToken ct)
     {
-        if (!request.ConversationId.HasValue)
-            return null;
+        Message? message = null;
+        if (request.MessageId.HasValue)
+        {
+            message = await _messageRepo.GetWithSenderAsync(request.MessageId.Value, ct)
+                ?? throw new NotFoundException("Không tìm thấy tin nhắn cần báo cáo.", "MESSAGE_NOT_FOUND");
 
-        var conversation = await _chatRepo.GetDetailAsync(request.ConversationId.Value, ct)
+            if (message.IsDeleted)
+                throw new ValidationException("Không thể báo cáo tin nhắn đã được thu hồi.", "MESSAGE_ALREADY_RECALLED");
+
+            if (message.SenderId == reporterId)
+                throw new ValidationException("Bạn không thể tự báo cáo tin nhắn của chính mình.", "CANNOT_REPORT_SELF");
+
+            if (request.ConversationId.HasValue && request.ConversationId.Value != message.ConversationId)
+                throw new ValidationException("Tin nhắn không thuộc hội thoại đã chọn.", "MESSAGE_CONVERSATION_MISMATCH");
+        }
+
+        var conversationId = request.ConversationId ?? message?.ConversationId;
+        if (!conversationId.HasValue)
+            return (null, null);
+
+        var conversation = await _chatRepo.GetDetailAsync(conversationId.Value, ct)
             ?? throw new NotFoundException("Không tìm thấy hội thoại.", "CONVERSATION_NOT_FOUND");
 
         if (conversation.BuyerId != reporterId && conversation.SellerId != reporterId)
@@ -252,29 +274,33 @@ public class ReportService : IReportService
                 "Bạn chỉ có thể báo cáo trong hội thoại mà bạn tham gia.",
                 "NOT_CONVERSATION_PARTICIPANT");
 
-        return conversation;
+        return (conversation, message);
     }
 
     /// <summary>
     /// Chống spam: mỗi người chỉ report 1 lần cho mỗi đối tượng.
+    /// Khi báo cáo theo MessageId cụ thể thì cho phép report nhiều tin nhắn vi
+    /// phạm khác nhau trong cùng hội thoại, nhưng không report trùng cùng 1 tin.
     /// </summary>
     private async Task EnsureNotDuplicateAsync(
         Guid reporterId,
-        CreateReportDto request,
         Item? item,
         Transaction? transaction,
         Conversation? conversation,
+        Message? reportedMessage,
         CancellationToken ct)
     {
         var txId = transaction?.Id;
         var itemId = item?.Id;
-        var convId = conversation?.Id;
+        var messageId = reportedMessage?.Id;
+        var convId = messageId is null ? conversation?.Id : null;
 
         var existing = await _reportRepo.ListAsync(
             r => r.ReporterId == reporterId
                  && ((txId != null && r.TransactionId == txId)
                      || (itemId != null && r.ItemId == itemId)
-                     || (convId != null && r.ConversationId == convId)),
+                     || (messageId != null && r.MessageId == messageId)
+                     || (convId != null && r.ConversationId == convId && r.MessageId == null)),
             ct);
 
         if (existing.Count > 0)
@@ -300,6 +326,8 @@ public class ReportService : IReportService
         AdminNote = report.AdminNote,
         ItemTitle = itemTitle,
         ReportedUserName = reportedUserName,
+        MessageId = report.MessageId,
+        MessageEvidence = report.MessageEvidence,
         CreatedAt = report.CreatedAt,
         ResolvedAt = report.ResolvedAt
     };

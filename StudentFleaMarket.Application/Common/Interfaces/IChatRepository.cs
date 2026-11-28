@@ -62,6 +62,12 @@ public interface IChatRepository : IRepository<Conversation>
     /// có nhiều tin đến gần như đồng thời).
     /// </summary>
     Task IncrementUnreadAsync(Guid conversationId, Guid recipientId, CancellationToken ct = default);
+
+    /// <summary>Danh sách tin nhắn đang ghim trong hội thoại (mới ghim nhất lên đầu).</summary>
+    Task<List<Message>> ListPinnedMessagesAsync(Guid conversationId, CancellationToken ct = default);
+
+    /// <summary>Tin nhắn mới nhất trong hội thoại (dùng để cập nhật LastMessage khi sửa/thu hồi).</summary>
+    Task<Message?> GetLatestMessageAsync(Guid conversationId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -82,4 +88,7 @@ public interface IMessageRepository : IRepository<Message>
     /// Lấy tin nhắn vừa tạo kèm Sender (để trả về ngay sau khi gửi).
     /// </summary>
     Task<Message?> GetWithSenderAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Thả, đổi hoặc gỡ cảm xúc của user trên tin nhắn.</summary>
+    Task ToggleReactionAsync(Guid messageId, Guid userId, string emoji, CancellationToken ct = default);
 }

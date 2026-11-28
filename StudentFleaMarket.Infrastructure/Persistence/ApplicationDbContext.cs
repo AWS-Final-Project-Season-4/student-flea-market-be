@@ -21,6 +21,7 @@ public class AppDbContext: DbContext
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<MessageReaction> MessageReactions => Set<MessageReaction>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Report> Reports => Set<Report>();
     public DbSet<TransactionConfirmation> TransactionConfirmations => Set<TransactionConfirmation>();
@@ -354,9 +355,11 @@ public class AppDbContext: DbContext
         {
             entity.HasKey(m => m.Id);
             entity.Property(m => m.Content).IsRequired();
+            entity.Property(m => m.IsPinned).HasDefaultValue(false);
 
             // Phân trang lịch sử chat theo thời gian.
             entity.HasIndex(m => new { m.ConversationId, m.SentAt });
+            entity.HasIndex(m => new { m.ConversationId, m.IsPinned, m.PinnedAt });
 
             entity.HasOne(m => m.Conversation)
                   .WithMany(c => c.Messages)
@@ -366,6 +369,31 @@ public class AppDbContext: DbContext
                   .WithMany()
                   .HasForeignKey(m => m.SenderId)
                   .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(m => m.ReplyToMessage)
+                  .WithMany()
+                  .HasForeignKey(m => m.ReplyToMessageId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(m => m.PinnedBy)
+                  .WithMany()
+                  .HasForeignKey(m => m.PinnedById)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        //MessageReaction
+        modelBuilder.Entity<MessageReaction>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.Emoji).IsRequired().HasMaxLength(16);
+            entity.HasIndex(r => new { r.MessageId, r.UserId }).IsUnique();
+
+            entity.HasOne(r => r.Message)
+                  .WithMany(m => m.Reactions)
+                  .HasForeignKey(r => r.MessageId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(r => r.User)
+                  .WithMany()
+                  .HasForeignKey(r => r.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         //Review
@@ -407,16 +435,20 @@ public class AppDbContext: DbContext
         {
             entity.HasKey(rep => rep.Id);
             entity.Property(rep => rep.Description).IsRequired().HasMaxLength(1000);
+            entity.Property(rep => rep.MessageEvidence).HasMaxLength(1000);
             entity.Property(rep => rep.AdminNote).HasMaxLength(1000);
             entity.HasIndex(rep => rep.Status);
             entity.HasIndex(rep => rep.CreatedAt);
             // Unique để chống spam report trùng. Với Postgres, NULL được coi là
-            // giá trị khác nhau nên: 1 người có thể report nhiều tin khác nhau
-            // (TransactionId = NULL) nhưng không report trùng 1 tin / 1 đơn /
-            // 1 hội thoại.
+            // giá trị khác nhau nên: 1 người có thể report nhiều tin nhắn vi phạm
+            // khác nhau trong cùng hội thoại (MessageId != NULL), nhưng không report
+            // trùng cùng 1 tin nhắn / 1 đơn / 1 tin đăng / 1 hội thoại tổng quát.
             entity.HasIndex(rep => new { rep.ReporterId, rep.TransactionId }).IsUnique();
             entity.HasIndex(rep => new { rep.ReporterId, rep.ItemId }).IsUnique();
-            entity.HasIndex(rep => new { rep.ReporterId, rep.ConversationId }).IsUnique();
+            entity.HasIndex(rep => new { rep.ReporterId, rep.MessageId }).IsUnique();
+            entity.HasIndex(rep => new { rep.ReporterId, rep.ConversationId })
+                  .IsUnique()
+                  .HasFilter("\"MessageId\" IS NULL");
             entity.HasOne(rep => rep.Reporter)
                   .WithMany(u => u.ReportsSubmitted)
                   .HasForeignKey(rep => rep.ReporterId)
@@ -437,6 +469,10 @@ public class AppDbContext: DbContext
                   .WithMany()
                   .HasForeignKey(rep => rep.ConversationId)
                   .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(rep => rep.Message)
+                  .WithMany()
+                  .HasForeignKey(rep => rep.MessageId)
+                  .OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(rep => rep.ResolvedBy)
                   .WithMany()
                   .HasForeignKey(rep => rep.ResolvedById)

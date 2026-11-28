@@ -110,6 +110,11 @@ public class ChatRepository : EfRepository<Conversation>, IChatRepository
 
         var messages = await q
             .Include(m => m.Sender)
+            .Include(m => m.PinnedBy)
+            .Include(m => m.ReplyToMessage!)
+                .ThenInclude(r => r.Sender)
+            .Include(m => m.Reactions)
+                .ThenInclude(r => r.User)
             .OrderByDescending(m => m.SentAt)
             .Skip((pageNo - 1) * size)
             .Take(size)
@@ -158,6 +163,26 @@ public class ChatRepository : EfRepository<Conversation>, IChatRepository
                     .SetProperty(c => c.SellerUnreadCount, c => c.SellerUnreadCount + 1), ct);
         }
     }
+
+    public Task<List<Message>> ListPinnedMessagesAsync(Guid conversationId, CancellationToken ct = default)
+        => _messages
+            .AsNoTracking()
+            .Include(m => m.Sender)
+            .Include(m => m.PinnedBy)
+            .Include(m => m.ReplyToMessage!)
+                .ThenInclude(r => r.Sender)
+            .Include(m => m.Reactions)
+                .ThenInclude(r => r.User)
+            .Where(m => m.ConversationId == conversationId && m.IsPinned && !m.IsDeleted)
+            .OrderByDescending(m => m.PinnedAt ?? m.SentAt)
+            .ToListAsync(ct);
+
+    public Task<Message?> GetLatestMessageAsync(Guid conversationId, CancellationToken ct = default)
+        => _messages
+            .AsNoTracking()
+            .Where(m => m.ConversationId == conversationId)
+            .OrderByDescending(m => m.SentAt)
+            .FirstOrDefaultAsync(ct);
 }
 
 public class MessageRepository : EfRepository<Message>, IMessageRepository
@@ -172,6 +197,11 @@ public class MessageRepository : EfRepository<Message>, IMessageRepository
         => DbSet
             .AsNoTracking()
             .Include(m => m.Sender)
+            .Include(m => m.PinnedBy)
+            .Include(m => m.ReplyToMessage!)
+                .ThenInclude(r => r.Sender)
+            .Include(m => m.Reactions)
+                .ThenInclude(r => r.User)
             .Where(m => m.ConversationId == conversationId)
             .OrderByDescending(m => m.SentAt)
             .Skip(skip)
@@ -182,5 +212,47 @@ public class MessageRepository : EfRepository<Message>, IMessageRepository
         => DbSet
             .AsNoTracking()
             .Include(m => m.Sender)
+            .Include(m => m.PinnedBy)
+            .Include(m => m.ReplyToMessage!)
+                .ThenInclude(r => r.Sender)
+            .Include(m => m.Reactions)
+                .ThenInclude(r => r.User)
             .FirstOrDefaultAsync(m => m.Id == id, ct);
+
+    public async Task ToggleReactionAsync(
+        Guid messageId,
+        Guid userId,
+        string emoji,
+        CancellationToken ct = default)
+    {
+        var reactions = DbContext.Set<MessageReaction>();
+        var existing = await reactions.FirstOrDefaultAsync(
+            r => r.MessageId == messageId && r.UserId == userId, ct);
+
+        if (existing is not null)
+        {
+            if (existing.Emoji == emoji)
+            {
+                reactions.Remove(existing);
+            }
+            else
+            {
+                existing.Emoji = emoji;
+                existing.ReactedAt = DateTime.UtcNow;
+            }
+        }
+        else
+        {
+            await reactions.AddAsync(new MessageReaction
+            {
+                Id = Guid.NewGuid(),
+                MessageId = messageId,
+                UserId = userId,
+                Emoji = emoji,
+                ReactedAt = DateTime.UtcNow
+            }, ct);
+        }
+
+        await DbContext.SaveChangesAsync(ct);
+    }
 }
