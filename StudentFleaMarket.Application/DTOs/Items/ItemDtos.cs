@@ -9,6 +9,8 @@ public class CreateItemRequestDto
     public string Title { get; set; } = null!;
     public int CategoryId { get; set; }
     public string? Description { get; set; }
+    public string? Color { get; set; }
+    public int Quantity { get; set; } = 1;
 
     /// <summary>
     /// Giá bán. 0 = tặng miễn phí.
@@ -56,6 +58,14 @@ public class CreateItemRequestDtoValidator : AbstractValidator<CreateItemRequest
             .MaximumLength(5000).WithMessage("The description must not exceed 5000 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.Description));
 
+        RuleFor(x => x.Color)
+            .MaximumLength(80).WithMessage("The color must not exceed 80 characters.")
+            .When(x => !string.IsNullOrWhiteSpace(x.Color));
+
+        RuleFor(x => x.Quantity)
+            .GreaterThanOrEqualTo(1).WithMessage("Quantity must be at least 1.")
+            .LessThanOrEqualTo(999).WithMessage("Quantity must not exceed 999.");
+
         RuleFor(x => x.Price)
             .GreaterThanOrEqualTo(0).WithMessage("The selling price cannot be negative.")
             .LessThanOrEqualTo(100_000_000).WithMessage("The selling price is invalid.");
@@ -84,6 +94,8 @@ public class UpdateItemRequestDto
     public string? Title { get; set; }
     public int? CategoryId { get; set; }
     public string? Description { get; set; }
+    public string? Color { get; set; }
+    public int? Quantity { get; set; }
     public decimal? Price { get; set; }
     public int? Condition { get; set; }
     public bool? IsExchangeEnabled { get; set; }
@@ -117,6 +129,15 @@ public class UpdateItemRequestDtoValidator : AbstractValidator<UpdateItemRequest
         RuleFor(x => x.Description)
             .MaximumLength(5000).WithMessage("The description must not exceed 5000 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.Description));
+
+        RuleFor(x => x.Color)
+            .MaximumLength(80).WithMessage("The color must not exceed 80 characters.")
+            .When(x => !string.IsNullOrWhiteSpace(x.Color));
+
+        RuleFor(x => x.Quantity)
+            .GreaterThanOrEqualTo(1).WithMessage("Quantity must be at least 1.")
+            .LessThanOrEqualTo(999).WithMessage("Quantity must not exceed 999.")
+            .When(x => x.Quantity.HasValue);
 
         RuleFor(x => x.Price)
             .GreaterThanOrEqualTo(0).WithMessage("The selling price cannot be negative.")
@@ -171,6 +192,8 @@ public class ItemSummaryDto
     public string ItemCode { get; init; } = null!;
 
     public decimal Price { get; init; }
+    public string? Color { get; init; }
+    public int Quantity { get; init; }
     public int Condition { get; init; }
     public string ConditionName { get; init; } = null!;
     public bool IsExchangeEnabled { get; init; }
@@ -212,6 +235,8 @@ public class ItemDetailDto
     public string ItemCode { get; init; } = null!;
 
     public string? Description { get; init; }
+    public string? Color { get; init; }
+    public int Quantity { get; init; }
     public decimal Price { get; init; }
     public int Condition { get; init; }
     public string ConditionName { get; init; } = null!;
@@ -235,5 +260,7 @@ public class SellerDto
     public string? AvatarUrl { get; init; }
     public string? SchoolName { get; init; }
     public string? StudentCode { get; init; }
+    public decimal? RatingAverage { get; init; }
+    public int RatingCount { get; init; }
     public DateTime MemberSince { get; init; }
 }

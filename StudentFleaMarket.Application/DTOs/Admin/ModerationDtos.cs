@@ -35,6 +35,8 @@ public class ModerationReportDto
     public string? ItemCode { get; init; }
     public Guid? TransactionId { get; init; }
     public Guid? ConversationId { get; init; }
+    public Guid? MessageId { get; init; }
+    public string? MessageEvidence { get; init; }
 
     /// <summary>Đơn giao dịch đã hoàn thành chưa (ảnh hưởng tới việc có thể vô hiệu đánh giá).</summary>
     public bool? TransactionCompleted { get; init; }

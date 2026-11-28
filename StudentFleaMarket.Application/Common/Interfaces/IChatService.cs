@@ -53,6 +53,43 @@ public interface IChatService
         SendMessageDto request,
         CancellationToken ct = default);
 
+    /// <summary>Chỉnh sửa nội dung tin nhắn của chính người gửi.</summary>
+    Task<MessageDto> EditMessageAsync(
+        Guid userId,
+        Guid conversationId,
+        Guid messageId,
+        EditMessageDto request,
+        CancellationToken ct = default);
+
+    /// <summary>Thu hồi tin nhắn của chính người gửi.</summary>
+    Task<MessageDto> RecallMessageAsync(
+        Guid userId,
+        Guid conversationId,
+        Guid messageId,
+        CancellationToken ct = default);
+
+    /// <summary>Ghim hoặc bỏ ghim một tin nhắn trong hội thoại.</summary>
+    Task<MessageDto> SetPinMessageAsync(
+        Guid userId,
+        Guid conversationId,
+        Guid messageId,
+        bool isPinned,
+        CancellationToken ct = default);
+
+    /// <summary>Danh sách tất cả tin nhắn đang được ghim trong hội thoại.</summary>
+    Task<List<MessageDto>> ListPinnedMessagesAsync(
+        Guid userId,
+        Guid conversationId,
+        CancellationToken ct = default);
+
+    /// <summary>Thả hoặc gỡ cảm xúc (react emoji) trên tin nhắn.</summary>
+    Task<MessageDto> ToggleReactionAsync(
+        Guid userId,
+        Guid conversationId,
+        Guid messageId,
+        ReactMessageDto request,
+        CancellationToken ct = default);
+
     /// <summary>Đánh dấu đã đọc các tin của đối tác trong hội thoại.</summary>
     Task<MarkReadResultDto> MarkAsReadAsync(
         Guid userId,

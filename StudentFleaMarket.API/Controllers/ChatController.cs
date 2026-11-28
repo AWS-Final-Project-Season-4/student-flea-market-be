@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
+using StudentFleaMarket.API.Hubs;
 using StudentFleaMarket.Application.Common.Interfaces;
 using StudentFleaMarket.Application.DTOs.Chat;
 
@@ -35,10 +37,12 @@ namespace StudentFleaMarket.API.Controllers;
 public class ChatController : ControllerBase
 {
     private readonly IChatService _chatService;
+    private readonly IHubContext<ChatHub> _hubContext;
 
-    public ChatController(IChatService chatService)
+    public ChatController(IChatService chatService, IHubContext<ChatHub> hubContext)
     {
         _chatService = chatService;
+        _hubContext = hubContext;
     }
 
     /// <summary>
@@ -108,6 +112,77 @@ public class ChatController : ControllerBase
         CancellationToken ct)
     {
         var result = await _chatService.SendMessageAsync(GetUserId(), id, request, ct);
+        await _hubContext.Clients.Group($"conversation:{id}").SendAsync("ReceiveMessage", result, ct);
+        return Ok(result);
+    }
+
+    /// <summary>Chỉnh sửa nội dung tin nhắn của chính mình.</summary>
+    [HttpPut("conversations/{id:guid}/messages/{messageId:guid}")]
+    public async Task<IActionResult> EditMessage(
+        Guid id,
+        Guid messageId,
+        [FromBody] EditMessageDto request,
+        CancellationToken ct)
+    {
+        var result = await _chatService.EditMessageAsync(GetUserId(), id, messageId, request, ct);
+        await _hubContext.Clients.Group($"conversation:{id}").SendAsync("MessageUpdated", result, ct);
+        return Ok(result);
+    }
+
+    /// <summary>Thu hồi tin nhắn của chính mình.</summary>
+    [HttpDelete("conversations/{id:guid}/messages/{messageId:guid}")]
+    public async Task<IActionResult> RecallMessage(
+        Guid id,
+        Guid messageId,
+        CancellationToken ct)
+    {
+        var result = await _chatService.RecallMessageAsync(GetUserId(), id, messageId, ct);
+        await _hubContext.Clients.Group($"conversation:{id}").SendAsync("MessageUpdated", result, ct);
+        return Ok(result);
+    }
+
+    /// <summary>Ghim một tin nhắn trong hội thoại.</summary>
+    [HttpPost("conversations/{id:guid}/messages/{messageId:guid}/pin")]
+    public async Task<IActionResult> PinMessage(
+        Guid id,
+        Guid messageId,
+        CancellationToken ct)
+    {
+        var result = await _chatService.SetPinMessageAsync(GetUserId(), id, messageId, true, ct);
+        await _hubContext.Clients.Group($"conversation:{id}").SendAsync("MessageUpdated", result, ct);
+        return Ok(result);
+    }
+
+    /// <summary>Bỏ ghim một tin nhắn trong hội thoại.</summary>
+    [HttpDelete("conversations/{id:guid}/messages/{messageId:guid}/pin")]
+    public async Task<IActionResult> UnpinMessage(
+        Guid id,
+        Guid messageId,
+        CancellationToken ct)
+    {
+        var result = await _chatService.SetPinMessageAsync(GetUserId(), id, messageId, false, ct);
+        await _hubContext.Clients.Group($"conversation:{id}").SendAsync("MessageUpdated", result, ct);
+        return Ok(result);
+    }
+
+    /// <summary>Danh sách các tin nhắn đang được ghim trong hội thoại.</summary>
+    [HttpGet("conversations/{id:guid}/pinned")]
+    public async Task<IActionResult> ListPinnedMessages(Guid id, CancellationToken ct)
+    {
+        var result = await _chatService.ListPinnedMessagesAsync(GetUserId(), id, ct);
+        return Ok(result);
+    }
+
+    /// <summary>Thả, đổi hoặc gỡ cảm xúc (react emoji) lên một tin nhắn.</summary>
+    [HttpPost("conversations/{id:guid}/messages/{messageId:guid}/reactions")]
+    public async Task<IActionResult> ToggleReaction(
+        Guid id,
+        Guid messageId,
+        [FromBody] ReactMessageDto request,
+        CancellationToken ct)
+    {
+        var result = await _chatService.ToggleReactionAsync(GetUserId(), id, messageId, request, ct);
+        await _hubContext.Clients.Group($"conversation:{id}").SendAsync("MessageUpdated", result, ct);
         return Ok(result);
     }
 

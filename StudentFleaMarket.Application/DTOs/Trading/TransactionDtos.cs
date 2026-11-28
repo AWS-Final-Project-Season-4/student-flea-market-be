@@ -26,6 +26,12 @@ public class CreatePurchaseTransactionDto
     /// </summary>
     public string? MeetingLocation { get; set; }
 
+    /// <summary>Vĩ độ địa điểm giao nhận.</summary>
+    public double? MeetingLatitude { get; set; }
+
+    /// <summary>Kinh độ địa điểm giao nhận.</summary>
+    public double? MeetingLongitude { get; set; }
+
     /// <summary>
     /// Phương thức thanh toán: 1 = Cod (tiền mặt khi gặp), 2 = BankTransfer (QR / cổng thanh toán).
     /// Mặc định 1 (Cod).
@@ -37,6 +43,15 @@ public class CreatePurchaseTransactionDto
     /// Bỏ trống -> dùng giá bán của tin đăng.
     /// </summary>
     public decimal? Amount { get; set; }
+
+    /// <summary>Số lượng mua (mặc định 1).</summary>
+    public int Quantity { get; set; } = 1;
+
+    /// <summary>
+    /// Hình thức giao nhận: 1 = DirectMeetup (gặp trực tiếp / tự giao), 2 = ExternalShipper (đặt ship ngoài).
+    /// Sàn không thu hay hạch toán phí ship bên ngoài.
+    /// </summary>
+    public int DeliveryMethod { get; set; } = (int)StudentFleaMarket.Domain.Enums.DeliveryMethod.DirectMeetup;
 }
 
 public class CreatePurchaseTransactionDtoValidator : AbstractValidator<CreatePurchaseTransactionDto>
@@ -53,6 +68,23 @@ public class CreatePurchaseTransactionDtoValidator : AbstractValidator<CreatePur
             .MaximumLength(255).WithMessage("Địa điểm gặp mặt không được vượt quá 255 ký tự.")
             .When(x => !string.IsNullOrWhiteSpace(x.MeetingLocation));
 
+        RuleFor(x => x.MeetingLatitude)
+            .Must(v => !v.HasValue || (double.IsFinite(v.Value) && v.Value >= -90d && v.Value <= 90d))
+            .WithMessage("Vĩ độ không hợp lệ.");
+
+        RuleFor(x => x.MeetingLongitude)
+            .Must(v => !v.HasValue || (double.IsFinite(v.Value) && v.Value >= -180d && v.Value <= 180d))
+            .WithMessage("Kinh độ không hợp lệ.");
+
+        RuleFor(x => x)
+            .Must(x => x.MeetingLatitude.HasValue == x.MeetingLongitude.HasValue)
+            .WithMessage("Phải cung cấp đầy đủ vĩ độ và kinh độ.");
+
+        RuleFor(x => x.MeetingLocation)
+            .NotEmpty()
+            .WithMessage("Phải nhập địa chỉ khi cung cấp tọa độ.")
+            .When(x => x.MeetingLatitude.HasValue || x.MeetingLongitude.HasValue);
+
         RuleFor(x => x.PaymentMethod)
             .Must(m => Enum.IsDefined(typeof(PaymentMethod), m))
             .WithMessage("Phương thức thanh toán không hợp lệ.");
@@ -61,6 +93,19 @@ public class CreatePurchaseTransactionDtoValidator : AbstractValidator<CreatePur
             .GreaterThanOrEqualTo(0).WithMessage("Số tiền không thể âm.")
             .LessThanOrEqualTo(100_000_000).WithMessage("Số tiền không hợp lệ.")
             .When(x => x.Amount.HasValue);
+
+        RuleFor(x => x.Quantity)
+            .GreaterThanOrEqualTo(1).WithMessage("Số lượng mua tối thiểu là 1.")
+            .LessThanOrEqualTo(999).WithMessage("Số lượng mua không hợp lệ.");
+
+        RuleFor(x => x.DeliveryMethod)
+            .Must(m => Enum.IsDefined(typeof(DeliveryMethod), m))
+            .WithMessage("Hình thức giao nhận không hợp lệ.");
+
+        RuleFor(x => x.MeetingLocation)
+            .NotEmpty()
+            .WithMessage("Vui lòng nhập địa chỉ nhận hàng khi chọn đặt ship bên ngoài.")
+            .When(x => x.DeliveryMethod == (int)DeliveryMethod.ExternalShipper);
     }
 }
 
@@ -79,6 +124,12 @@ public class CreateExchangeTransactionDto
     /// Bỏ trống -> lấy địa điểm trong tin đăng của món đồ được nhận.
     /// </summary>
     public string? MeetingLocation { get; set; }
+
+    /// <summary>Vĩ độ địa điểm giao nhận.</summary>
+    public double? MeetingLatitude { get; set; }
+
+    /// <summary>Kinh độ địa điểm giao nhận.</summary>
+    public double? MeetingLongitude { get; set; }
 
     /// <summary>
     /// Phương thức thanh toán tiền bù chênh lệch: 1 = Cod, 2 = BankTransfer.
@@ -104,6 +155,23 @@ public class CreateExchangeTransactionDtoValidator : AbstractValidator<CreateExc
             .MinimumLength(2).WithMessage("Địa điểm gặp mặt phải có ít nhất 2 ký tự.")
             .MaximumLength(255).WithMessage("Địa điểm gặp mặt không được vượt quá 255 ký tự.")
             .When(x => !string.IsNullOrWhiteSpace(x.MeetingLocation));
+
+        RuleFor(x => x.MeetingLatitude)
+            .Must(v => !v.HasValue || (double.IsFinite(v.Value) && v.Value >= -90d && v.Value <= 90d))
+            .WithMessage("Vĩ độ không hợp lệ.");
+
+        RuleFor(x => x.MeetingLongitude)
+            .Must(v => !v.HasValue || (double.IsFinite(v.Value) && v.Value >= -180d && v.Value <= 180d))
+            .WithMessage("Kinh độ không hợp lệ.");
+
+        RuleFor(x => x)
+            .Must(x => x.MeetingLatitude.HasValue == x.MeetingLongitude.HasValue)
+            .WithMessage("Phải cung cấp đầy đủ vĩ độ và kinh độ.");
+
+        RuleFor(x => x.MeetingLocation)
+            .NotEmpty()
+            .WithMessage("Phải nhập địa chỉ khi cung cấp tọa độ.")
+            .When(x => x.MeetingLatitude.HasValue || x.MeetingLongitude.HasValue);
 
         RuleFor(x => x.PaymentMethod)
             .Must(m => Enum.IsDefined(typeof(PaymentMethod), m))
@@ -155,6 +223,98 @@ public class ConfirmPaymentDtoValidator : AbstractValidator<ConfirmPaymentDto>
         RuleFor(x => x.TransactionRef)
             .MaximumLength(150).WithMessage("Mã tham chiếu không được vượt quá 150 ký tự.")
             .When(x => !string.IsNullOrWhiteSpace(x.TransactionRef));
+    }
+}
+
+/// <summary>
+/// Người bán duyệt đơn và (nếu giao trực tiếp) chốt lại địa điểm giao dịch đã thống nhất.
+/// </summary>
+public class AcceptTransactionDto
+{
+    public int? DeliveryMethod { get; set; }
+    public string? MeetingLocation { get; set; }
+    public double? MeetingLatitude { get; set; }
+    public double? MeetingLongitude { get; set; }
+    public string? DeliveryCarrier { get; set; }
+    public string? TrackingCode { get; set; }
+}
+
+public class AcceptTransactionDtoValidator : AbstractValidator<AcceptTransactionDto>
+{
+    public AcceptTransactionDtoValidator()
+    {
+        RuleFor(x => x.DeliveryMethod)
+            .Must(m => m.HasValue && Enum.IsDefined(typeof(DeliveryMethod), m.Value))
+            .WithMessage("Hình thức giao nhận không hợp lệ.")
+            .When(x => x.DeliveryMethod.HasValue);
+
+        RuleFor(x => x.MeetingLocation)
+            .MinimumLength(2).WithMessage("Địa điểm gặp mặt phải có ít nhất 2 ký tự.")
+            .MaximumLength(255).WithMessage("Địa điểm gặp mặt không được vượt quá 255 ký tự.")
+            .When(x => !string.IsNullOrWhiteSpace(x.MeetingLocation));
+
+        RuleFor(x => x.MeetingLatitude)
+            .Must(v => !v.HasValue || (double.IsFinite(v.Value) && v.Value >= -90d && v.Value <= 90d))
+            .WithMessage("Vĩ độ không hợp lệ.");
+
+        RuleFor(x => x.MeetingLongitude)
+            .Must(v => !v.HasValue || (double.IsFinite(v.Value) && v.Value >= -180d && v.Value <= 180d))
+            .WithMessage("Kinh độ không hợp lệ.");
+
+        RuleFor(x => x)
+            .Must(x => x.MeetingLatitude.HasValue == x.MeetingLongitude.HasValue)
+            .WithMessage("Phải cung cấp đầy đủ vĩ độ và kinh độ.");
+
+        RuleFor(x => x.DeliveryCarrier)
+            .MaximumLength(100).WithMessage("Tên đơn vị giao hàng không quá 100 ký tự.")
+            .When(x => !string.IsNullOrWhiteSpace(x.DeliveryCarrier));
+
+        RuleFor(x => x.TrackingCode)
+            .MaximumLength(100).WithMessage("Mã vận đơn / thông tin shipper không quá 100 ký tự.")
+            .When(x => !string.IsNullOrWhiteSpace(x.TrackingCode));
+    }
+}
+
+/// <summary>
+/// Người bán chuyển đơn sang trạng thái Đang giao (tự giao hoặc đã giao cho shipper ngoài).
+/// </summary>
+public class StartDeliveryDto
+{
+    public string? MeetingLocation { get; set; }
+    public double? MeetingLatitude { get; set; }
+    public double? MeetingLongitude { get; set; }
+    public string? DeliveryCarrier { get; set; }
+    public string? TrackingCode { get; set; }
+}
+
+public class StartDeliveryDtoValidator : AbstractValidator<StartDeliveryDto>
+{
+    public StartDeliveryDtoValidator()
+    {
+        RuleFor(x => x.MeetingLocation)
+            .MinimumLength(2).WithMessage("Địa điểm gặp mặt phải có ít nhất 2 ký tự.")
+            .MaximumLength(255).WithMessage("Địa điểm gặp mặt không được vượt quá 255 ký tự.")
+            .When(x => !string.IsNullOrWhiteSpace(x.MeetingLocation));
+
+        RuleFor(x => x.MeetingLatitude)
+            .Must(v => !v.HasValue || (double.IsFinite(v.Value) && v.Value >= -90d && v.Value <= 90d))
+            .WithMessage("Vĩ độ không hợp lệ.");
+
+        RuleFor(x => x.MeetingLongitude)
+            .Must(v => !v.HasValue || (double.IsFinite(v.Value) && v.Value >= -180d && v.Value <= 180d))
+            .WithMessage("Kinh độ không hợp lệ.");
+
+        RuleFor(x => x)
+            .Must(x => x.MeetingLatitude.HasValue == x.MeetingLongitude.HasValue)
+            .WithMessage("Phải cung cấp đầy đủ vĩ độ và kinh độ.");
+
+        RuleFor(x => x.DeliveryCarrier)
+            .MaximumLength(100).WithMessage("Tên đơn vị giao hàng không quá 100 ký tự.")
+            .When(x => !string.IsNullOrWhiteSpace(x.DeliveryCarrier));
+
+        RuleFor(x => x.TrackingCode)
+            .MaximumLength(100).WithMessage("Mã vận đơn / thông tin shipper không quá 100 ký tự.")
+            .When(x => !string.IsNullOrWhiteSpace(x.TrackingCode));
     }
 }
 
@@ -220,8 +380,21 @@ public class TransactionDto
     /// <summary>Tổng số tiền của đơn.</summary>
     public decimal Amount { get; init; }
 
+    /// <summary>Số lượng sản phẩm trong đơn.</summary>
+    public int Quantity { get; init; } = 1;
+
     /// <summary>Địa điểm gặp mặt giao dịch.</summary>
     public string MeetingLocation { get; init; } = null!;
+
+    public double? MeetingLatitude { get; init; }
+
+    public double? MeetingLongitude { get; init; }
+
+    public int DeliveryMethod { get; init; }
+    public string DeliveryMethodName { get; init; } = null!;
+    public string? DeliveryCarrier { get; init; }
+    public string? TrackingCode { get; init; }
+    public string? InspectionNote { get; init; }
 
     /// <summary>Thông tin thanh toán (null nếu đơn giá 0 / không cần thanh toán).</summary>
     public PaymentDto? Payment { get; init; }
@@ -270,13 +443,21 @@ public static class TransactionLabels
 {
     public static string StatusName(int status) => status switch
     {
-        (int)TransactionStatus.Pending => "Đang xử lý",
-        (int)TransactionStatus.Accepted => "Đã thỏa thuận",
-        (int)TransactionStatus.Rejected => "Đã từ chối",
+        (int)TransactionStatus.Pending => "Chờ xác nhận",
+        (int)TransactionStatus.Accepted => "Đã duyệt / Chuẩn bị giao",
+        (int)TransactionStatus.Rejected => "Từ chối nhận khi đồng kiểm",
         (int)TransactionStatus.Cancelled => "Đã hủy giao dịch",
         (int)TransactionStatus.Completed => "Đã hoàn thành",
-        (int)TransactionStatus.AwaitingConfirmation => "Chờ xác nhận bàn giao",
+        (int)TransactionStatus.AwaitingConfirmation => "Chờ xác nhận đồng kiểm",
+        (int)TransactionStatus.Delivering => "Đang giao hàng",
         _ => "Không xác định"
+    };
+
+    public static string DeliveryMethodName(int method) => method switch
+    {
+        (int)DeliveryMethod.DirectMeetup => "Gặp trực tiếp / Tự giao",
+        (int)DeliveryMethod.ExternalShipper => "Đặt ship ngoài (2 bên tự thoả thuận cước)",
+        _ => "Gặp trực tiếp / Tự giao"
     };
 
     public static string TypeName(int type) => type switch

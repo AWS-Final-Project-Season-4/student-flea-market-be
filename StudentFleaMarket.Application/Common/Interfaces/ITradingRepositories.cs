@@ -81,6 +81,11 @@ public interface ITransactionRepository : IRepository<Transaction>
     Task<bool> HasPendingTransactionForItemAsync(Guid itemId, CancellationToken ct = default);
 
     /// <summary>
+    /// Tổng số lượng sản phẩm đang được giữ bởi các đơn chưa hoàn thành.
+    /// </summary>
+    Task<int> GetPendingQuantityForItemAsync(Guid itemId, CancellationToken ct = default);
+
+    /// <summary>
     /// Tìm đơn giao dịch đã tạo từ một yêu cầu đổi đồ (để tránh tạo trùng).
     /// </summary>
     Task<Transaction?> GetByExchangeRequestAsync(Guid exchangeRequestId, CancellationToken ct = default);

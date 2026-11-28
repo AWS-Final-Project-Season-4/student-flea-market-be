@@ -17,6 +17,7 @@ namespace StudentFleaMarket.Application.Common.Helpers;
 ///    - ST: Stationery & Study (Dụng cụ học tập)
 ///    - BH: Beauty & Health (Sức khỏe & Sắc đẹp)
 ///    - FD: Food & Drinks (Đồ ăn & Thức uống)
+///    - VA: Vehicle Accessories (Phụ kiện xe)
 ///    - IT: Generic Item (Mặc định / Danh mục khác)
 /// 3. Bảng ký tự Crockford Base32 (32 ký tự) loại bỏ triệt để các ký tự gây nhầm lẫn:
 ///    - Không chứa 'O', 'I', 'L' (dễ nhầm với 0 và 1).
@@ -70,6 +71,8 @@ public static class ItemCodeHelper
             return "BH";
         if (normalized.Contains("food") || normalized.Contains("ăn") || normalized.Contains("uống") || normalized.Contains("drink"))
             return "FD";
+        if (normalized.Contains("phu-kien-xe") || normalized.Contains("phụ kiện xe") || normalized.Contains("vehicle"))
+            return "VA";
 
         return DefaultPrefix;
     }

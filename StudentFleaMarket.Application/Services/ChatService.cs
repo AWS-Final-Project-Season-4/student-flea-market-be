@@ -188,6 +188,15 @@ public class ChatService : IChatService
                 $"Nội dung tin nhắn không được vượt quá {MaxContentLength} ký tự.",
                 "MESSAGE_CONTENT_TOO_LONG");
 
+        if (request.ReplyToMessageId.HasValue)
+        {
+            var replyTarget = await _messageRepo.GetByIdAsync(request.ReplyToMessageId.Value, ct);
+            if (replyTarget is null || replyTarget.ConversationId != conversationId)
+                throw new NotFoundException(
+                    "Không tìm thấy tin nhắn gốc để trả lời.",
+                    "REPLY_MESSAGE_NOT_FOUND");
+        }
+
         var now = DateTime.UtcNow;
 
         var message = new Message
@@ -198,17 +207,21 @@ public class ChatService : IChatService
             Content = content,
             IsRead = false,
             IsDeleted = false,
-            SentAt = now
+            SentAt = now,
+            ReplyToMessageId = request.ReplyToMessageId
         };
 
         await _messageRepo.AddAsync(message, ct);
         await _messageRepo.SaveChangesAsync(ct);
 
         // Cập nhật preview + thời điểm tin mới nhất trên hội thoại.
-        conversation.LastMessage = BuildPreview(content);
-        conversation.LastMessageAt = now;
-        _chatRepo.Update(conversation);
-        await _chatRepo.SaveChangesAsync(ct);
+        var trackedConv = await _chatRepo.GetByIdAsync(conversationId, ct);
+        if (trackedConv is not null)
+        {
+            trackedConv.LastMessage = BuildPreview(content);
+            trackedConv.LastMessageAt = now;
+            await _chatRepo.SaveChangesAsync(ct);
+        }
 
         // Tăng số tin chưa đọc của phía NHẬN (người gửi không tự đếm tin mình).
         var recipientId = userId == conversation.BuyerId
@@ -217,8 +230,157 @@ public class ChatService : IChatService
 
         await _chatRepo.IncrementUnreadAsync(conversationId, recipientId, ct);
 
-        // Nạp lại để có quan hệ Sender cho DTO.
+        // Nạp lại để có quan hệ Sender / ReplyToMessage cho DTO.
         var saved = await _messageRepo.GetWithSenderAsync(message.Id, ct);
+        return MapMessage(saved ?? message);
+    }
+
+    // =====================================================================
+    // EDIT / RECALL / PIN
+    // =====================================================================
+    public async Task<MessageDto> EditMessageAsync(
+        Guid userId,
+        Guid conversationId,
+        Guid messageId,
+        EditMessageDto request,
+        CancellationToken ct = default)
+    {
+        await EnsureUserActiveAsync(userId, ct);
+
+        var conversation = await GetDetailAsync(conversationId, ct);
+        EnsureParticipant(conversation, userId);
+
+        var message = await _messageRepo.GetByIdAsync(messageId, ct);
+        if (message is null || message.ConversationId != conversationId)
+            throw new NotFoundException("Không tìm thấy tin nhắn.", "MESSAGE_NOT_FOUND");
+
+        if (message.SenderId != userId)
+            throw new ForbiddenException("Bạn chỉ có thể chỉnh sửa tin nhắn của chính mình.", "FORBIDDEN_MESSAGE_EDIT");
+
+        if (message.IsDeleted)
+            throw new ValidationException("Không thể chỉnh sửa tin nhắn đã thu hồi.", "MESSAGE_ALREADY_RECALLED");
+
+        var content = request.Content?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(content))
+            throw new ValidationException("Nội dung tin nhắn không được để trống.", "MESSAGE_CONTENT_EMPTY");
+
+        if (content.Length > MaxContentLength)
+            throw new ValidationException(
+                $"Nội dung tin nhắn không được vượt quá {MaxContentLength} ký tự.",
+                "MESSAGE_CONTENT_TOO_LONG");
+
+        message.Content = content;
+        message.EditedAt = DateTime.UtcNow;
+        await _messageRepo.SaveChangesAsync(ct);
+
+        await SyncConversationLastMessageAsync(conversationId, ct);
+
+        var saved = await _messageRepo.GetWithSenderAsync(message.Id, ct);
+        return MapMessage(saved ?? message);
+    }
+
+    public async Task<MessageDto> RecallMessageAsync(
+        Guid userId,
+        Guid conversationId,
+        Guid messageId,
+        CancellationToken ct = default)
+    {
+        await EnsureUserActiveAsync(userId, ct);
+
+        var conversation = await GetDetailAsync(conversationId, ct);
+        EnsureParticipant(conversation, userId);
+
+        var message = await _messageRepo.GetByIdAsync(messageId, ct);
+        if (message is null || message.ConversationId != conversationId)
+            throw new NotFoundException("Không tìm thấy tin nhắn.", "MESSAGE_NOT_FOUND");
+
+        if (message.SenderId != userId)
+            throw new ForbiddenException("Bạn chỉ có thể thu hồi tin nhắn của chính mình.", "FORBIDDEN_MESSAGE_RECALL");
+
+        if (!message.IsDeleted)
+        {
+            message.IsDeleted = true;
+            message.IsPinned = false;
+            message.PinnedAt = null;
+            message.PinnedById = null;
+            await _messageRepo.SaveChangesAsync(ct);
+
+            await SyncConversationLastMessageAsync(conversationId, ct);
+        }
+
+        var saved = await _messageRepo.GetWithSenderAsync(message.Id, ct);
+        return MapMessage(saved ?? message);
+    }
+
+    public async Task<MessageDto> SetPinMessageAsync(
+        Guid userId,
+        Guid conversationId,
+        Guid messageId,
+        bool isPinned,
+        CancellationToken ct = default)
+    {
+        await EnsureUserActiveAsync(userId, ct);
+
+        var conversation = await GetDetailAsync(conversationId, ct);
+        EnsureParticipant(conversation, userId);
+
+        var message = await _messageRepo.GetByIdAsync(messageId, ct);
+        if (message is null || message.ConversationId != conversationId)
+            throw new NotFoundException("Không tìm thấy tin nhắn.", "MESSAGE_NOT_FOUND");
+
+        if (message.IsDeleted)
+            throw new ValidationException("Không thể ghim tin nhắn đã thu hồi.", "MESSAGE_ALREADY_RECALLED");
+
+        if (message.IsPinned != isPinned)
+        {
+            message.IsPinned = isPinned;
+            message.PinnedAt = isPinned ? DateTime.UtcNow : null;
+            message.PinnedById = isPinned ? userId : null;
+            await _messageRepo.SaveChangesAsync(ct);
+        }
+
+        var saved = await _messageRepo.GetWithSenderAsync(message.Id, ct);
+        return MapMessage(saved ?? message);
+    }
+
+    public async Task<List<MessageDto>> ListPinnedMessagesAsync(
+        Guid userId,
+        Guid conversationId,
+        CancellationToken ct = default)
+    {
+        var conversation = await GetDetailAsync(conversationId, ct);
+        EnsureParticipant(conversation, userId);
+
+        var pinned = await _chatRepo.ListPinnedMessagesAsync(conversationId, ct);
+        return pinned.Select(MapMessage).ToList();
+    }
+
+    public async Task<MessageDto> ToggleReactionAsync(
+        Guid userId,
+        Guid conversationId,
+        Guid messageId,
+        ReactMessageDto request,
+        CancellationToken ct = default)
+    {
+        await EnsureUserActiveAsync(userId, ct);
+
+        var conversation = await GetDetailAsync(conversationId, ct);
+        EnsureParticipant(conversation, userId);
+
+        var message = await _messageRepo.GetByIdAsync(messageId, ct);
+        if (message is null || message.ConversationId != conversationId)
+            throw new NotFoundException("Không tìm thấy tin nhắn.", "MESSAGE_NOT_FOUND");
+
+        if (message.IsDeleted)
+            throw new ValidationException("Không thể thả cảm xúc cho tin nhắn đã thu hồi.", "MESSAGE_ALREADY_RECALLED");
+
+        var emoji = request.Emoji?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(emoji) || emoji.Length > 16)
+            throw new ValidationException("Biểu tượng cảm xúc không hợp lệ.", "INVALID_REACTION_EMOJI");
+
+        await _messageRepo.ToggleReactionAsync(messageId, userId, emoji, ct);
+
+        var saved = await _messageRepo.GetWithSenderAsync(messageId, ct);
         return MapMessage(saved ?? message);
     }
 
@@ -309,6 +471,19 @@ public class ChatService : IChatService
         return normalized[..MaxPreviewLength] + "…";
     }
 
+    private async Task SyncConversationLastMessageAsync(Guid conversationId, CancellationToken ct)
+    {
+        var latest = await _chatRepo.GetLatestMessageAsync(conversationId, ct);
+        var trackedConv = await _chatRepo.GetByIdAsync(conversationId, ct);
+        if (trackedConv is null || latest is null) return;
+
+        trackedConv.LastMessage = latest.IsDeleted
+            ? "Tin nhắn đã được thu hồi"
+            : BuildPreview(latest.Content);
+        trackedConv.LastMessageAt = latest.SentAt;
+        await _chatRepo.SaveChangesAsync(ct);
+    }
+
     private static MessageDto MapMessage(Message message) => new()
     {
         Id = message.Id,
@@ -320,7 +495,35 @@ public class ChatService : IChatService
         IsDeleted = message.IsDeleted,
         IsRead = message.IsRead,
         SentAt = message.SentAt,
-        ReadAt = message.ReadAt
+        ReadAt = message.ReadAt,
+        EditedAt = message.EditedAt,
+        IsPinned = !message.IsDeleted && message.IsPinned,
+        PinnedAt = message.IsDeleted ? null : message.PinnedAt,
+        PinnedById = message.IsDeleted ? null : message.PinnedById,
+        PinnedByName = message.IsDeleted ? null : message.PinnedBy?.FullName,
+        ReplyToMessageId = message.ReplyToMessageId,
+        ReplyTo = message.ReplyToMessage is null
+            ? null
+            : new ReplyPreviewDto
+            {
+                Id = message.ReplyToMessage.Id,
+                SenderId = message.ReplyToMessage.SenderId,
+                SenderName = message.ReplyToMessage.Sender?.FullName ?? "",
+                Content = message.ReplyToMessage.IsDeleted ? null : message.ReplyToMessage.Content,
+                IsDeleted = message.ReplyToMessage.IsDeleted
+            },
+        Reactions = message.IsDeleted
+            ? new List<MessageReactionDto>()
+            : message.Reactions
+                .OrderBy(r => r.ReactedAt)
+                .Select(r => new MessageReactionDto
+                {
+                    UserId = r.UserId,
+                    UserName = r.User?.FullName ?? "",
+                    Emoji = r.Emoji,
+                    ReactedAt = r.ReactedAt
+                })
+                .ToList()
     };
 
     private static ConversationDto MapDto(Conversation c, Guid viewerId)

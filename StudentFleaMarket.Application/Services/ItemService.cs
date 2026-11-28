@@ -18,17 +18,20 @@ public class ItemService : IItemService
     private readonly ICategoryRepository _categoryRepo;
     private readonly IFavoriteRepository _favoriteRepo;
     private readonly IUserRepository _userRepo;
+    private readonly IReviewRepository _reviewRepo;
 
     public ItemService(
         IItemRepository itemRepo,
         ICategoryRepository categoryRepo,
         IFavoriteRepository favoriteRepo,
-        IUserRepository userRepo)
+        IUserRepository userRepo,
+        IReviewRepository reviewRepo)
     {
         _itemRepo = itemRepo;
         _categoryRepo = categoryRepo;
         _favoriteRepo = favoriteRepo;
         _userRepo = userRepo;
+        _reviewRepo = reviewRepo;
     }
 
     // ------------------------------------------------------------ CREATE
@@ -65,6 +68,8 @@ public class ItemService : IItemService
             // Automatic ItemCode generation with category-based prefix (BK, EL, ST...)
             ItemCode = await GenerateUniqueItemCodeAsync(ItemCodeHelper.GetCategoryPrefix(category.Slug ?? category.Name), ct),
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+            Color = string.IsNullOrWhiteSpace(request.Color) ? null : request.Color.Trim(),
+            Quantity = request.Quantity > 0 ? request.Quantity : 1,
             Price = request.Price,
             Condition = request.Condition,
             IsExchangeEnabled = request.IsExchangeEnabled,
@@ -136,6 +141,12 @@ public class ItemService : IItemService
 
         if (request.Description is not null)
             item.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+
+        if (request.Color is not null)
+            item.Color = string.IsNullOrWhiteSpace(request.Color) ? null : request.Color.Trim();
+
+        if (request.Quantity.HasValue && request.Quantity.Value > 0)
+            item.Quantity = request.Quantity.Value;
 
         if (request.Price.HasValue)
             item.Price = request.Price.Value;
@@ -365,6 +376,8 @@ public class ItemService : IItemService
             Slug = item.Slug,
             ItemCode = item.ItemCode,
             Price = item.Price,
+            Color = item.Color,
+            Quantity = item.Quantity,
             Condition = item.Condition,
             ConditionName = ItemEnumLabels.ConditionName(item.Condition),
             IsExchangeEnabled = item.IsExchangeEnabled,
@@ -383,14 +396,15 @@ public class ItemService : IItemService
         };
     }
 
-    private static async Task<ItemDetailDto> BuildDetailDto(
+    private async Task<ItemDetailDto> BuildDetailDto(
         Item item,
         Category? category,
         ApplicationUser? seller,
         int favoriteCount,
-        bool isFavorited)
+        bool isFavorited,
+        CancellationToken ct = default)
     {
-        await Task.CompletedTask;
+        var (ratingAvg, ratingCount) = await _reviewRepo.GetRatingStatsAsync(item.SellerId, ct);
 
         return new ItemDetailDto
         {
@@ -399,6 +413,8 @@ public class ItemService : IItemService
             Slug = item.Slug,
             ItemCode = item.ItemCode,
             Description = item.Description,
+            Color = item.Color,
+            Quantity = item.Quantity,
             Price = item.Price,
             Condition = item.Condition,
             ConditionName = ItemEnumLabels.ConditionName(item.Condition),
@@ -421,6 +437,8 @@ public class ItemService : IItemService
                 AvatarUrl = seller?.AvatarUrl,
                 SchoolName = seller?.SchoolName,
                 StudentCode = seller?.StudentCode,
+                RatingAverage = ratingAvg.HasValue ? Math.Round(ratingAvg.Value, 1) : null,
+                RatingCount = ratingCount,
                 MemberSince = seller?.CreatedAt ?? DateTime.UtcNow
             },
             Images = item.Images

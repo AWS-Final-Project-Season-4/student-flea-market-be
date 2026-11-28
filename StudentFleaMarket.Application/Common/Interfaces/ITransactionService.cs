@@ -61,6 +61,24 @@ public interface ITransactionService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Người bán duyệt đơn và chốt phương thức / địa điểm giao nhận offline.
+    /// </summary>
+    Task<TransactionDto> AcceptAsync(
+        Guid userId,
+        Guid transactionId,
+        AcceptTransactionDto? request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Người bán chuyển đơn sang trạng thái đang giao / đã bàn giao cho shipper ngoài.
+    /// </summary>
+    Task<TransactionDto> StartDeliveryAsync(
+        Guid userId,
+        Guid transactionId,
+        StartDeliveryDto? request,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Hủy đơn giao dịch — chuyển sang trạng thái Cancelled.
     /// Tin đăng được trả lại trạng thái "đang bán".
     /// </summary>

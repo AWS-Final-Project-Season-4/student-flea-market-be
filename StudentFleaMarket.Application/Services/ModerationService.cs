@@ -440,6 +440,8 @@ public class ModerationService : IModerationService
             ItemCode = report.Item?.ItemCode,
             TransactionId = report.TransactionId,
             ConversationId = report.ConversationId,
+            MessageId = report.MessageId,
+            MessageEvidence = report.MessageEvidence,
             TransactionCompleted = txCompleted,
             AdminNote = report.AdminNote,
             ResolvedById = report.ResolvedById,

@@ -148,7 +148,7 @@ public class ChatHub : Hub
     /// Lưu tin vào DB trước (nguồn sự thật), sau đó đẩy realtime cho cả 2 bên.
     /// Nếu gửi qua REST cũng gọi chung service nên logic không lệch.
     /// </summary>
-    public async Task SendMessage(Guid conversationId, string content)
+    public async Task SendMessage(Guid conversationId, string content, Guid? replyToMessageId = null)
     {
         var userId = GetUserId();
 
@@ -158,14 +158,11 @@ public class ChatHub : Hub
             message = await _chatService.SendMessageAsync(
                 userId,
                 conversationId,
-                new SendMessageDto { Content = content },
+                new SendMessageDto { Content = content, ReplyToMessageId = replyToMessageId },
                 Context.ConnectionAborted);
         }
         catch (AppException ex)
         {
-            // SignalR mặc định giấu message lỗi khi client không gửi
-            // invocationId -> client chỉ thấy "Unknown error". Vì vậy bắt lỗi
-            // nghiệp vụ ở đây và gửi event rõ ràng cho client.
             await Clients.Caller.SendAsync("ChatError", new
             {
                 conversationId,
@@ -180,6 +177,127 @@ public class ChatHub : Hub
         await Clients.Group(ConversationGroup(conversationId)).SendAsync("ReceiveMessage", message);
 
         await PushConversationStateAsync(conversationId);
+    }
+
+    /// <summary>Chỉnh sửa nội dung tin nhắn và phát realtime cho cả 2 bên.</summary>
+    public async Task EditMessage(Guid conversationId, Guid messageId, string content)
+    {
+        var userId = GetUserId();
+
+        MessageDto updated;
+        try
+        {
+            updated = await _chatService.EditMessageAsync(
+                userId,
+                conversationId,
+                messageId,
+                new EditMessageDto { Content = content },
+                Context.ConnectionAborted);
+        }
+        catch (AppException ex)
+        {
+            await Clients.Caller.SendAsync("ChatError", new
+            {
+                conversationId,
+                code = ex.Code,
+                message = ex.Message
+            });
+
+            throw new HubException(ex.Message);
+        }
+
+        await Clients.Group(ConversationGroup(conversationId)).SendAsync("MessageUpdated", updated);
+        await PushConversationStateAsync(conversationId);
+    }
+
+    /// <summary>Thu hồi tin nhắn của chính mình và phát realtime cho cả 2 bên.</summary>
+    public async Task RecallMessage(Guid conversationId, Guid messageId)
+    {
+        var userId = GetUserId();
+
+        MessageDto updated;
+        try
+        {
+            updated = await _chatService.RecallMessageAsync(
+                userId,
+                conversationId,
+                messageId,
+                Context.ConnectionAborted);
+        }
+        catch (AppException ex)
+        {
+            await Clients.Caller.SendAsync("ChatError", new
+            {
+                conversationId,
+                code = ex.Code,
+                message = ex.Message
+            });
+
+            throw new HubException(ex.Message);
+        }
+
+        await Clients.Group(ConversationGroup(conversationId)).SendAsync("MessageUpdated", updated);
+        await PushConversationStateAsync(conversationId);
+    }
+
+    /// <summary>Ghim hoặc bỏ ghim một tin nhắn trong hội thoại.</summary>
+    public async Task PinMessage(Guid conversationId, Guid messageId, bool isPinned)
+    {
+        var userId = GetUserId();
+
+        MessageDto updated;
+        try
+        {
+            updated = await _chatService.SetPinMessageAsync(
+                userId,
+                conversationId,
+                messageId,
+                isPinned,
+                Context.ConnectionAborted);
+        }
+        catch (AppException ex)
+        {
+            await Clients.Caller.SendAsync("ChatError", new
+            {
+                conversationId,
+                code = ex.Code,
+                message = ex.Message
+            });
+
+            throw new HubException(ex.Message);
+        }
+
+        await Clients.Group(ConversationGroup(conversationId)).SendAsync("MessageUpdated", updated);
+    }
+
+    /// <summary>Thả, đổi hoặc gỡ cảm xúc (react emoji) lên một tin nhắn.</summary>
+    public async Task ReactToMessage(Guid conversationId, Guid messageId, string emoji)
+    {
+        var userId = GetUserId();
+
+        MessageDto updated;
+        try
+        {
+            updated = await _chatService.ToggleReactionAsync(
+                userId,
+                conversationId,
+                messageId,
+                new ReactMessageDto { Emoji = emoji },
+                Context.ConnectionAborted);
+        }
+        catch (AppException ex)
+        {
+            await Clients.Caller.SendAsync("ChatError", new
+            {
+                conversationId,
+                code = ex.Code,
+                message = ex.Message
+            });
+
+            throw new HubException(ex.Message);
+        }
+
+        await Clients.Group(ConversationGroup(conversationId)).SendAsync("MessageUpdated", updated);
     }
 
     /// <summary>Đánh dấu đã đọc các tin của đối tác trong hội thoại.</summary>

@@ -48,6 +48,12 @@ public class Report
     /// <summary>Hội thoại chat liên quan (bắt buộc với dạng 3).</summary>
     public Guid? ConversationId { get; set; }
 
+    /// <summary>Tin nhắn vi phạm cụ thể bị báo cáo (tùy chọn với dạng 3).</summary>
+    public Guid? MessageId { get; set; }
+
+    /// <summary>Bản chụp nội dung tin nhắn vi phạm tại thời điểm báo cáo.</summary>
+    public string? MessageEvidence { get; set; }
+
     /// <summary>ReportReason: 1 = Bùng hàng, 2 = Trả hàng sai, 3 = Không trả tiền, ...</summary>
     public int Reason { get; set; }
 
@@ -73,5 +79,6 @@ public class Report
     public Item? Item { get; set; }
     public Transaction? Transaction { get; set; }
     public Conversation? Conversation { get; set; }
+    public Message? Message { get; set; }
     public ApplicationUser? ResolvedBy { get; set; }
 }

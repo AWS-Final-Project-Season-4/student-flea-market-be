@@ -48,6 +48,9 @@ public class CreateReportDto
 
     /// <summary>Id hội thoại chat liên quan — bắt buộc khi báo cáo quấy rối qua chat.</summary>
     public Guid? ConversationId { get; set; }
+
+    /// <summary>Id tin nhắn vi phạm cụ thể (tùy chọn khi báo cáo trong hội thoại).</summary>
+    public Guid? MessageId { get; set; }
 }
 
 public class CreateReportDtoValidator : AbstractValidator<CreateReportDto>
@@ -72,8 +75,9 @@ public class CreateReportDtoValidator : AbstractValidator<CreateReportDto>
         RuleFor(x => x)
             .Must(x => !string.IsNullOrWhiteSpace(x.ItemCode)
                         || x.TransactionId.HasValue
-                        || x.ConversationId.HasValue)
-            .WithMessage("Phải chỉ rõ bài đăng, giao dịch hoặc hội thoại cần báo cáo.");
+                        || x.ConversationId.HasValue
+                        || x.MessageId.HasValue)
+            .WithMessage("Phải chỉ rõ bài đăng, giao dịch, hội thoại hoặc tin nhắn cần báo cáo.");
     }
 }
 
@@ -102,6 +106,12 @@ public class MyReportDto
 
     /// <summary>Tên tài khoản bị báo cáo (nếu có).</summary>
     public string? ReportedUserName { get; init; }
+
+    /// <summary>Id tin nhắn bị báo cáo (nếu có).</summary>
+    public Guid? MessageId { get; init; }
+
+    /// <summary>Nội dung tin nhắn vi phạm được lưu làm bằng chứng (nếu có).</summary>
+    public string? MessageEvidence { get; init; }
 
     public DateTime CreatedAt { get; init; }
     public DateTime? ResolvedAt { get; init; }
