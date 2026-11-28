@@ -16,6 +16,21 @@ using StudentFleaMarket.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ------------------------------------------------------- Secrets from AWS SSM
+// Trên AWS, secret (connection string, JWT key, mật khẩu SMTP, secret của header
+// X-Origin-Verify) nằm ở SSM Parameter Store dạng SecureString, KHÔNG nằm trong biến
+// môi trường Lambda. SSM_CONFIG_PATH (vd: /student-market/dev/api) do api.yaml đặt;
+// mỗi tham số <path>/Jwt/SecretKey ánh xạ thành key cấu hình "Jwt:SecretKey".
+// Nạp sau biến môi trường nên giá trị SSM được ưu tiên. Chạy local không đặt biến này
+// thì bỏ qua (dùng user-secrets / appsettings như cũ).
+var ssmConfigPath = Environment.GetEnvironmentVariable("SSM_CONFIG_PATH");
+if (!string.IsNullOrWhiteSpace(ssmConfigPath))
+{
+    // Không optional: thiếu quyền / thiếu tham số thì cold start lỗi ngay, dễ thấy hơn
+    // là chạy tiếp với cấu hình rỗng.
+    builder.Configuration.AddSystemsManager(ssmConfigPath);
+}
+
 // ------------------------------------------------------------ AWS Lambda hosting
 // Khi chạy trong Lambda (sau API Gateway HTTP API) adapter thay Kestrel bằng
 // Lambda runtime. Chạy local / ngoài Lambda thì lệnh này không làm gì.
@@ -286,6 +301,9 @@ var app = builder.Build();
 
 // ---------------------------------------------------------------- Middleware
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+// Chỉ nhận /api/* đi qua CloudFront (+ AWS WAF): chặn gọi thẳng URL API Gateway.
+// Bật bằng OriginVerify:Enforce=true; tắt thì không làm gì (local / giai đoạn chuyển).
+app.UseMiddleware<OriginVerifyMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {
@@ -401,7 +419,7 @@ if (!builder.Configuration.GetValue<bool>("SkipDatabaseSeed"))
         {
             using var scope = app.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            await DemoDataSeeder.SeedAsync(db);
+            await DemoDataSeeder.SeedAsync(db, builder.Configuration[DemoDataSeeder.DemoPasswordKey] ?? string.Empty);
             app.Logger.LogInformation("Demo has been loaded (users + sample listings).");
         }
         catch (Exception ex)

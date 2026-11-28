@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/.vs/
+**/*.user
+**/appsettings.Development.json
+**/secrets*.json
+.git
+StudentFleaMarket.Tests/
+StudentFleaMarket.ImageProcessor/
+*.zip
