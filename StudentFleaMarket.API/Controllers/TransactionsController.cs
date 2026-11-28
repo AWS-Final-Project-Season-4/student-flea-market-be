@@ -91,6 +91,32 @@ public class TransactionsController : ControllerBase
     }
 
     /// <summary>
+    /// Người bán duyệt đơn, chốt hình thức giao nhận và (nếu giao trực tiếp) cập nhật điểm hẹn đã thống nhất.
+    /// </summary>
+    [HttpPost("{id:guid}/accept")]
+    public async Task<IActionResult> Accept(
+        Guid id,
+        [FromBody] AcceptTransactionDto? request,
+        CancellationToken ct)
+    {
+        var result = await _service.AcceptAsync(GetUserId(), id, request, ct);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Người bán chuyển đơn sang trạng thái Đang giao (tự giao hoặc đã đặt shipper ngoài).
+    /// </summary>
+    [HttpPost("{id:guid}/deliver")]
+    public async Task<IActionResult> StartDelivery(
+        Guid id,
+        [FromBody] StartDeliveryDto? request,
+        CancellationToken ct)
+    {
+        var result = await _service.StartDeliveryAsync(GetUserId(), id, request, ct);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Hoàn thành giao dịch — chuyển đơn sang trạng thái "Hoàn thành".
     /// Tin đăng tương ứng được đánh dấu "Đã bán".
     /// </summary>

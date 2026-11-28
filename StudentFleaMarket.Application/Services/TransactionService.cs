@@ -85,19 +85,35 @@ public class TransactionService : ITransactionService
                 "Bạn không thể mua chính tin đăng của mình.",
                 "CANNOT_BUY_OWN_ITEM");
 
-        if (item.Status != (int)ItemStatus.Available)
+        if (item.Status != (int)ItemStatus.Available || item.Quantity <= 0)
             throw new ValidationException(
                 "Tin đăng này không còn đang bán.",
                 "ITEM_NOT_AVAILABLE");
 
-        // Mỗi tin chỉ có 1 đơn đang xử lý — tránh 2 người cùng mua.
-        if (await _txRepo.HasPendingTransactionForItemAsync(item.Id, ct))
+        var requestedQuantity = request.Quantity > 0 ? request.Quantity : 1;
+        if (requestedQuantity > item.Quantity)
+            throw new ValidationException(
+                $"Số lượng đặt mua vượt quá tồn kho hiện có ({item.Quantity}).",
+                "INSUFFICIENT_ITEM_QUANTITY");
+
+        var pendingQty = await _txRepo.GetPendingQuantityForItemAsync(item.Id, ct);
+        var availableQty = item.Quantity - pendingQty;
+        if (requestedQuantity > availableQty)
+        {
+            if (item.Quantity <= 1)
+                throw new ConflictException(
+                    "Tin đăng này đang có một đơn giao dịch khác được xử lý.",
+                    "ITEM_ALREADY_HAS_TRANSACTION");
+
             throw new ConflictException(
-                "Tin đăng này đang có một đơn giao dịch khác được xử lý.",
-                "ITEM_ALREADY_HAS_TRANSACTION");
+                availableQty <= 0
+                    ? "Toàn bộ số lượng sản phẩm đang được giữ bởi các đơn giao dịch khác."
+                    : $"Chỉ còn {availableQty} sản phẩm khả dụng để đặt mua.",
+                "INSUFFICIENT_AVAILABLE_QUANTITY");
+        }
 
         var counterpartyId = item.SellerId;
-        var amount = request.Amount ?? item.Price;
+        var amount = request.Amount ?? (item.Price * requestedQuantity);
 
         // Tin giá 0 -> giao dịch "nhận miễn phí", không cần Payment.
         var type = item.Price == 0 && request.Amount is null
@@ -113,13 +129,15 @@ public class TransactionService : ITransactionService
             ExchangeRequestId = null,
             Type = type,
             Amount = amount,
+            Quantity = requestedQuantity,
             Status = (int)TransactionStatus.Pending,
+            DeliveryMethod = request.DeliveryMethod,
             MeetingLocation = string.IsNullOrWhiteSpace(request.MeetingLocation)
-    ? item.Location
-    : request.MeetingLocation.Trim(),
-MeetingLatitude = request.MeetingLatitude,
-MeetingLongitude = request.MeetingLongitude,
-CreatedAt = DateTime.UtcNow
+                ? item.Location
+                : request.MeetingLocation.Trim(),
+            MeetingLatitude = request.MeetingLatitude,
+            MeetingLongitude = request.MeetingLongitude,
+            CreatedAt = DateTime.UtcNow
         };
 
         await _txRepo.AddAsync(transaction, ct);
@@ -302,6 +320,109 @@ CreatedAt = DateTime.UtcNow
     // =====================================================================
     // VÒNG ĐỜI ĐƠN
     // =====================================================================
+    public async Task<TransactionDto> AcceptAsync(
+        Guid userId,
+        Guid transactionId,
+        AcceptTransactionDto? request,
+        CancellationToken ct = default)
+    {
+        var tx = await GetTrackedAsync(transactionId, ct);
+        EnsureParticipant(tx, userId);
+
+        if (tx.CounterpartyId != userId)
+            throw new ForbiddenException(
+                "Chỉ người bán mới có thể duyệt đơn và chốt địa điểm giao dịch.",
+                "ONLY_SELLER_CAN_ACCEPT");
+
+        if ((TransactionStatus)tx.Status != TransactionStatus.Pending)
+            throw new ConflictException(
+                $"Đơn giao dịch đang ở trạng thái \"{TransactionLabels.StatusName(tx.Status)}\" nên không thể duyệt.",
+                "TRANSACTION_NOT_PENDING");
+
+        if (request?.DeliveryMethod.HasValue == true)
+            tx.DeliveryMethod = request.DeliveryMethod.Value;
+
+        if (!string.IsNullOrWhiteSpace(request?.MeetingLocation))
+        {
+            tx.MeetingLocation = request.MeetingLocation.Trim();
+            tx.MeetingLatitude = request.MeetingLatitude;
+            tx.MeetingLongitude = request.MeetingLongitude;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request?.DeliveryCarrier))
+            tx.DeliveryCarrier = request.DeliveryCarrier.Trim();
+
+        if (!string.IsNullOrWhiteSpace(request?.TrackingCode))
+            tx.TrackingCode = request.TrackingCode.Trim();
+
+        tx.Status = (int)TransactionStatus.Accepted;
+        _txRepo.Update(tx);
+        await _txRepo.SaveChangesAsync(ct);
+
+        await NotifyCounterpartyAsync(
+            tx.Initiator?.Email,
+            tx.Initiator?.FullName,
+            tx.Counterparty?.FullName ?? "",
+            tx.Item?.Title ?? "",
+            tx.Type,
+            ct,
+            subject: "Người bán đã xác nhận đơn hàng của bạn",
+            intro: "Người bán <b>{0}</b> đã duyệt đơn cho món đồ <b>{1}</b> và chuẩn bị giao hàng.",
+            itemCode: tx.Item?.ItemCode);
+
+        return await BuildDtoAsync(tx.Id, userId, ct);
+    }
+
+    public async Task<TransactionDto> StartDeliveryAsync(
+        Guid userId,
+        Guid transactionId,
+        StartDeliveryDto? request,
+        CancellationToken ct = default)
+    {
+        var tx = await GetTrackedAsync(transactionId, ct);
+        EnsureParticipant(tx, userId);
+
+        if (tx.CounterpartyId != userId)
+            throw new ForbiddenException(
+                "Chỉ người bán mới có thể cập nhật trạng thái đang giao.",
+                "ONLY_SELLER_CAN_DELIVER");
+
+        if ((TransactionStatus)tx.Status is not (TransactionStatus.Pending or TransactionStatus.Accepted))
+            throw new ConflictException(
+                $"Đơn giao dịch đang ở trạng thái \"{TransactionLabels.StatusName(tx.Status)}\" nên không thể chuyển sang Đang giao.",
+                "TRANSACTION_CANNOT_DELIVER");
+
+        if (!string.IsNullOrWhiteSpace(request?.MeetingLocation))
+        {
+            tx.MeetingLocation = request.MeetingLocation.Trim();
+            tx.MeetingLatitude = request.MeetingLatitude;
+            tx.MeetingLongitude = request.MeetingLongitude;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request?.DeliveryCarrier))
+            tx.DeliveryCarrier = request.DeliveryCarrier.Trim();
+
+        if (!string.IsNullOrWhiteSpace(request?.TrackingCode))
+            tx.TrackingCode = request.TrackingCode.Trim();
+
+        tx.Status = (int)TransactionStatus.Delivering;
+        _txRepo.Update(tx);
+        await _txRepo.SaveChangesAsync(ct);
+
+        await NotifyCounterpartyAsync(
+            tx.Initiator?.Email,
+            tx.Initiator?.FullName,
+            tx.Counterparty?.FullName ?? "",
+            tx.Item?.Title ?? "",
+            tx.Type,
+            ct,
+            subject: "Đơn hàng của bạn đang được giao",
+            intro: "Đơn hàng cho món đồ <b>{1}</b> của bạn đang được giao tới địa điểm đã chốt. Vui lòng đồng kiểm kỹ trước khi thanh toán COD.",
+            itemCode: tx.Item?.ItemCode);
+
+        return await BuildDtoAsync(tx.Id, userId, ct);
+    }
+
     public async Task<TransactionDto> CompleteAsync(
         Guid userId,
         Guid transactionId,
@@ -311,7 +432,7 @@ CreatedAt = DateTime.UtcNow
 
         EnsureParticipant(tx, userId);
 
-        if ((TransactionStatus)tx.Status != TransactionStatus.Pending)
+        if ((TransactionStatus)tx.Status is not (TransactionStatus.Pending or TransactionStatus.Accepted or TransactionStatus.Delivering))
             throw new ConflictException(
                 $"Đơn giao dịch đang ở trạng thái \"{TransactionLabels.StatusName(tx.Status)}\" nên không thể hoàn thành.",
                 "TRANSACTION_NOT_PENDING");
@@ -370,6 +491,8 @@ CreatedAt = DateTime.UtcNow
         _txRepo.Update(tx);
         await _txRepo.SaveChangesAsync(ct);
 
+        await MarkPaymentPaidIfPendingAsync(tx.Id, ct);
+
         // Đánh dấu tin đã bán + đính chính tên chủ tin (đổi chủ khi đổi đồ).
         await MarkItemSoldAsync(item, tx, ct);
 
@@ -406,7 +529,7 @@ CreatedAt = DateTime.UtcNow
     }
 
     // =====================================================================
-    // XÁC NHẬN BÀN GIAO (đơn đổi đồ)
+    // XÁC NHẬN BÀN GIAO & ĐỒNG KIỂM (Purchase COD & Exchange)
     // =====================================================================
     public async Task<HandoverConfirmationDto> ConfirmHandoverAsync(
         Guid userId,
@@ -418,27 +541,15 @@ CreatedAt = DateTime.UtcNow
 
         EnsureParticipant(tx, userId);
 
-        if (tx.Type != (int)TransactionType.Exchange)
-            throw new ValidationException(
-                "Chỉ giao dịch đổi đồ mới cần xác nhận bàn giao.",
-                "NOT_EXCHANGE_TRANSACTION");
-
-        if ((TransactionStatus)tx.Status is not (TransactionStatus.Pending or TransactionStatus.AwaitingConfirmation))
+        if ((TransactionStatus)tx.Status is not (
+            TransactionStatus.Pending
+            or TransactionStatus.Accepted
+            or TransactionStatus.Delivering
+            or TransactionStatus.AwaitingConfirmation))
             throw new ConflictException(
                 $"Đơn giao dịch đang ở trạng thái \"{TransactionLabels.StatusName(tx.Status)}\" nên không thể xác nhận.",
                 "TRANSACTION_NOT_PENDING");
 
-        // ---------------------------------------------------------------
-        // MÓN ĐỒ ĐÁNG LẼ BÊN NÀY PHẢI NHẬN.
-        //
-        // VỚI ĐƠN ĐỔI ĐỒ có 2 món đi ngược chiều:
-        //   - tx.Item      = món của BÊN KIA mang đến cho mình (người nhận yêu cầu).
-        //   - OfferedItem  = món của CHÍNH MÌNH mang đến cho bên kia.
-        //
-        // Nên mỗi bên phải nhận món CỦA BÊN KIA. Nếu dùng chung tx.Item cho
-        // cả 2 bên thì bên nhận sẽ phải nhập mã của chính món mình mang
-        // đi -> luôn khớp -> mất hết tác dụng phát hiện tráo hàng.
-        // ---------------------------------------------------------------
         var expectedItem = await ResolveExpectedReceivedItemAsync(tx, userId, ct)
             ?? throw new NotFoundException("Không tìm thấy tin đăng.", "ITEM_NOT_FOUND");
 
@@ -450,45 +561,74 @@ CreatedAt = DateTime.UtcNow
                 "ALREADY_CONFIRMED_HANDOVER");
 
         var receivedOk = request?.ItemReceivedOk ?? true;
+        var cleanNote = string.IsNullOrWhiteSpace(request?.Note) ? null : request.Note.Trim();
         var enteredCode = string.IsNullOrWhiteSpace(request?.ItemCodeVerified)
             ? null
             : ItemCodeHelper.Normalize(request.ItemCodeVerified);
 
-        // ---------------------------------------------------------------
-        // ĐỐI CHIẾU MÃ HÀNG — phát hiện tráo hàng ngay tại chỗ.
-        // Nếu mã nhập vào KHÔNG khớp mã món đáng lẽ phải nhận, thì bên này
-        // đã mang món khác đến. Ta KHÔNG cho xác nhận "đã nhận đúng".
-        // ---------------------------------------------------------------
-        bool? codeMatched = null;
+        // Nếu Buyer từ chối nhận hàng sau đồng kiểm (Purchase / Free):
+        if (!receivedOk && tx.Type != (int)TransactionType.Exchange)
+        {
+            if (tx.InitiatorId != userId)
+                throw new ForbiddenException(
+                    "Chỉ người mua mới có thể từ chối nhận hàng khi đồng kiểm.",
+                    "ONLY_BUYER_CAN_REJECT_INSPECTION");
 
+            await RecordConfirmationAsync(tx, userId, false, enteredCode, cleanNote, ct);
+
+            tx.InspectionNote = cleanNote ?? "Không đạt yêu cầu khi đồng kiểm.";
+            tx.Status = (int)TransactionStatus.Rejected;
+            tx.CancelledAt = DateTime.UtcNow;
+            tx.CancelReason = tx.InspectionNote;
+            _txRepo.Update(tx);
+            await _txRepo.SaveChangesAsync(ct);
+
+            var paidPayment = await _paymentRepo.GetByTransactionAsync(tx.Id, ct);
+            if (paidPayment is not null && paidPayment.Status == (int)PaymentStatus.Paid)
+            {
+                var trackedPayment = await _paymentRepo.GetByIdAsync(paidPayment.Id, ct);
+                if (trackedPayment is not null)
+                {
+                    trackedPayment.Status = (int)PaymentStatus.Refunded;
+                    _paymentRepo.Update(trackedPayment);
+                    await _paymentRepo.SaveChangesAsync(ct);
+                }
+            }
+
+            return await BuildHandoverDtoAsync(tx.Id, userId, ct);
+        }
+
+        // Đối chiếu mã hàng — phát hiện tráo hàng ngay tại chỗ.
         if (enteredCode is not null)
         {
-            codeMatched = string.Equals(enteredCode, expectedItem.ItemCode, StringComparison.OrdinalIgnoreCase);
+            var codeMatched = string.Equals(enteredCode, expectedItem.ItemCode, StringComparison.OrdinalIgnoreCase);
 
-            if (!codeMatched.Value && receivedOk)
+            if (!codeMatched && receivedOk)
                 throw new ValidationException(
                     $"Mã hàng bạn nhập (\"{enteredCode}\") không khớp với món đồ đáng lẽ được nhận " +
-                    $"(\"{expectedItem.ItemCode}\"). Có thể bạn đã nhận nhầm món hoặc bị trả hàng sai. " +
-                    "Vui lòng đánh dấu là không đúng món để gửi báo cáo.",
+                    $"(\"{expectedItem.ItemCode}\"). Có thể bạn đã nhận nhầm món hoặc bị giao sai hàng. " +
+                    "Vui lòng đánh dấu từ chối nhận nếu hàng không đúng.",
                     "ITEM_CODE_MISMATCH");
         }
 
-        await RecordConfirmationAsync(tx, userId, receivedOk, enteredCode, ct);
+        await RecordConfirmationAsync(tx, userId, receivedOk, enteredCode, cleanNote, ct);
 
-        // ---------------------------------------------------------------
         // Đếm số bên đã xác nhận -> quyết định đơn hoàn thành hay chờ.
-        // ---------------------------------------------------------------
         var confirmations = await _confirmRepo.GetByTransactionAsync(tx.Id, ct);
         var confirmedCount = confirmations.Count;
 
         if (confirmedCount >= 2)
         {
-            // Cả 2 bên đã xác nhận -> hoàn thành thật sự.
+            // Cả 2 bên đã xác nhận (đồng kiểm OK + nhận đủ tiền/hàng) -> hoàn thành thật sự.
             tx.Status = (int)TransactionStatus.Completed;
             tx.CompletedAt = DateTime.UtcNow;
+            if (!string.IsNullOrWhiteSpace(cleanNote))
+                tx.InspectionNote = cleanNote;
 
             _txRepo.Update(tx);
             await _txRepo.SaveChangesAsync(ct);
+
+            await MarkPaymentPaidIfPendingAsync(tx.Id, ct);
 
             var item = await _itemRepo.GetByIdAsync(tx.ItemId, ct);
             if (item is not null)
@@ -518,14 +658,16 @@ CreatedAt = DateTime.UtcNow
                 tx.Item?.Title ?? "",
                 tx.Type,
                 ct,
-                subject: "Giao dịch đổi đồ đã hoàn thành",
-                intro: "Cả hai bên đã xác nhận bàn giao món đồ <b>{0}</b>. Giao dịch hoàn thành, hai bên có thể đánh giá nhau.",
+                subject: "Giao dịch đã hoàn thành",
+                intro: "Cả hai bên đã xác nhận bàn giao & đồng kiểm món đồ <b>{0}</b>. Giao dịch hoàn thành.",
                 itemCode: tx.Item?.ItemCode);
         }
         else
         {
-            // Chỉ 1 bên xác nhận -> chờ bên kia.
+            // Chỉ 1 bên xác nhận -> chờ bên kia xác nhận hoàn tất.
             tx.Status = (int)TransactionStatus.AwaitingConfirmation;
+            if (!string.IsNullOrWhiteSpace(cleanNote))
+                tx.InspectionNote = cleanNote;
             _txRepo.Update(tx);
             await _txRepo.SaveChangesAsync(ct);
 
@@ -536,14 +678,12 @@ CreatedAt = DateTime.UtcNow
                 tx.Item?.Title ?? "",
                 tx.Type,
                 ct,
-                subject: "Giao dịch đổi đồ đang chờ bạn xác nhận",
-                intro: "Bạn đã xác nhận giao dịch đổi đồ với món đồ <b>{0}</b>. Vui lòng xác nhận bàn giao để hoàn tất giao dịch.",
+                subject: "Giao dịch đang chờ bạn xác nhận đồng kiểm",
+                intro: "Một bên đã xác nhận đồng kiểm món đồ <b>{0}</b>. Vui lòng xác nhận để hoàn tất đơn hàng.",
                 itemCode: tx.Item?.ItemCode);
         }
 
-        var result = await BuildHandoverDtoAsync(tx.Id, userId, ct);
-
-        return result;
+        return await BuildHandoverDtoAsync(tx.Id, userId, ct);
     }
 
     public async Task<HandoverConfirmationDto> GetHandoverStatusAsync(
@@ -566,6 +706,7 @@ CreatedAt = DateTime.UtcNow
         Guid userId,
         bool? itemReceivedOk,
         string? itemCodeVerified,
+        string? note,
         CancellationToken ct)
     {
         var confirmation = new TransactionConfirmation
@@ -576,7 +717,7 @@ CreatedAt = DateTime.UtcNow
             ConfirmedAt = DateTime.UtcNow,
             ItemReceivedOk = itemReceivedOk ?? true,
             ItemCodeVerified = itemCodeVerified,
-            Note = null
+            Note = note
         };
 
         await _confirmRepo.AddAsync(confirmation, ct);
@@ -682,7 +823,7 @@ CreatedAt = DateTime.UtcNow
 
         EnsureParticipant(tx, userId);
 
-        if ((TransactionStatus)tx.Status != TransactionStatus.Pending)
+        if ((TransactionStatus)tx.Status is not (TransactionStatus.Pending or TransactionStatus.Accepted or TransactionStatus.Delivering))
             throw new ConflictException(
                 $"Đơn giao dịch đang ở trạng thái \"{TransactionLabels.StatusName(tx.Status)}\" nên không thể hủy.",
                 "TRANSACTION_NOT_PENDING");
@@ -729,7 +870,7 @@ CreatedAt = DateTime.UtcNow
                 "Chỉ người trả tiền mới có thể xác nhận thanh toán.",
                 "NOT_PAYMENT_PAYER");
 
-        if ((TransactionStatus)tx.Status != TransactionStatus.Pending)
+        if ((TransactionStatus)tx.Status is not (TransactionStatus.Pending or TransactionStatus.Accepted or TransactionStatus.Delivering))
             throw new ConflictException(
                 $"Đơn giao dịch đang ở trạng thái \"{TransactionLabels.StatusName(tx.Status)}\" nên không thể xác nhận thanh toán.",
                 "TRANSACTION_NOT_PENDING");
@@ -801,7 +942,10 @@ CreatedAt = DateTime.UtcNow
     /// </summary>
     private async Task MarkItemSoldAsync(Item item, Transaction tx, CancellationToken ct)
     {
-        item.Status = (int)ItemStatus.Sold;
+        var purchasedQty = tx.Quantity > 0 ? tx.Quantity : 1;
+        item.Quantity = Math.Max(0, item.Quantity - purchasedQty);
+        if (item.Quantity <= 0 || tx.Type == (int)TransactionType.Exchange)
+            item.Status = (int)ItemStatus.Sold;
         item.UpdatedAt = DateTime.UtcNow;
 
         // Đơn đổi đồ: tin đổi chủ sang người gửi yêu cầu (người nhận món này).
@@ -815,6 +959,22 @@ CreatedAt = DateTime.UtcNow
         _itemRepo.Update(item);
         await _itemRepo.SaveChangesAsync(ct);
     }
+    private async Task MarkPaymentPaidIfPendingAsync(Guid txId, CancellationToken ct)
+    {
+        var payment = await _paymentRepo.GetByTransactionAsync(txId, ct);
+        if (payment is not null && payment.Status != (int)PaymentStatus.Paid)
+        {
+            var trackedPayment = await _paymentRepo.GetByIdAsync(payment.Id, ct);
+            if (trackedPayment is not null)
+            {
+                trackedPayment.Status = (int)PaymentStatus.Paid;
+                trackedPayment.PaidAt = DateTime.UtcNow;
+                _paymentRepo.Update(trackedPayment);
+                await _paymentRepo.SaveChangesAsync(ct);
+            }
+        }
+    }
+
     private async Task<TransactionDto> BuildDtoAsync(Guid id, Guid viewerId, CancellationToken ct)
     {
         var tx = await _txRepo.GetDetailAsync(id, ct)
@@ -840,18 +1000,24 @@ CreatedAt = DateTime.UtcNow
             OfferedItem = offeredItem is null ? null : MapItem(offeredItem),
             ExchangeRequestId = tx.ExchangeRequestId,
             Amount = tx.Amount,
+            Quantity = tx.Quantity,
             MeetingLocation = tx.MeetingLocation,
             MeetingLatitude = tx.MeetingLatitude,
             MeetingLongitude = tx.MeetingLongitude,
+            DeliveryMethod = tx.DeliveryMethod,
+            DeliveryMethodName = TransactionLabels.DeliveryMethodName(tx.DeliveryMethod),
+            DeliveryCarrier = tx.DeliveryCarrier,
+            TrackingCode = tx.TrackingCode,
+            InspectionNote = tx.InspectionNote,
             Payment = tx.Payment is null ? null : MapPayment(tx.Payment, tx.Payment.Payer?.FullName ?? ""),
             CreatedAt = tx.CreatedAt,
             CompletedAt = tx.CompletedAt,
             CancelledAt = tx.CancelledAt,
             CancelReason = tx.CancelReason,
-            // Chỉ được thao tác khi đơn còn ở trạng thái "đang xử lý".
-            // Với đơn Exchange đã có 1 bên xác nhận (AwaitingConfirmation) thì
-            // bên còn lại VẪN được bấm xác nhận — nên cần cho phép.
+            // Cho phép thao tác khi đơn chưa kết thúc (Completed / Cancelled / Rejected).
             CanManage = (tx.Status == (int)TransactionStatus.Pending
+                        || tx.Status == (int)TransactionStatus.Accepted
+                        || tx.Status == (int)TransactionStatus.Delivering
                         || tx.Status == (int)TransactionStatus.AwaitingConfirmation)
                         && (tx.InitiatorId == viewerId || tx.CounterpartyId == viewerId)
         };

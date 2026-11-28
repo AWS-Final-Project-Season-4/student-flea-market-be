@@ -37,8 +37,12 @@ public enum TransactionStatus
     Completed = 5,
 
     /// <summary>
-    /// Chờ xác nhận của bên còn lại (chỉ dùng cho đơn Exchange).
-    /// Bên đã bấm "Hoàn tất" đã xác nhận, đang chờ bên kia xác nhận.
+    /// Chờ xác nhận của bên còn lại (đã có 1 bên xác nhận bàn giao / đồng kiểm).
     /// </summary>
-    AwaitingConfirmation = 6
+    AwaitingConfirmation = 6,
+
+    /// <summary>
+    /// Đang giao hàng (người bán đang tới điểm hẹn hoặc đã bàn giao cho shipper ngoài).
+    /// </summary>
+    Delivering = 7
 }

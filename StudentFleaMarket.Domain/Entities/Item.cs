@@ -26,6 +26,8 @@ public class Item
     /// </summary>
     public string TitleNormalized { get; set; } = null!;
     public string? Description { get; set; }
+    public string? Color { get; set; }
+    public int Quantity { get; set; } = 1;
     public decimal Price { get; set; }
     public int Condition { get; set; }
     public bool IsExchangeEnabled { get; set; } = false;

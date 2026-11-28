@@ -41,6 +41,7 @@ public class Transaction
     /// - Free: 0.
     /// </summary>
     public decimal Amount { get; set; }
+    public int Quantity { get; set; } = 1;
 
     /// <summary>
     /// TransactionStatus: 1 = Pending, 2 = Accepted, 3 = Rejected, 4 = Cancelled, 5 = Completed.
@@ -55,6 +56,18 @@ public class Transaction
 
     /// <summary>Kinh độ địa điểm giao nhận.</summary>
     public double? MeetingLongitude { get; set; }
+
+    /// <summary>Hình thức giao nhận: 1 = DirectMeetup, 2 = ExternalShipper.</summary>
+    public int DeliveryMethod { get; set; } = (int)Domain.Enums.DeliveryMethod.DirectMeetup;
+
+    /// <summary>Đơn vị vận chuyển ngoài / người giao (tùy chọn khi đặt ship).</summary>
+    public string? DeliveryCarrier { get; set; }
+
+    /// <summary>Mã vận đơn / thông tin tham chiếu shipper (tùy chọn).</summary>
+    public string? TrackingCode { get; set; }
+
+    /// <summary>Ghi chú kết quả đồng kiểm hoặc lý do từ chối nhận khi kiểm hàng.</summary>
+    public string? InspectionNote { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

@@ -154,6 +154,8 @@ public class AppDbContext: DbContext
             entity.Property(i => i.Title).IsRequired().HasMaxLength(200);
             entity.Property(i => i.Slug).IsRequired().HasMaxLength(250);
             entity.Property(i => i.Price).HasPrecision(18, 2);
+            entity.Property(i => i.Color).HasMaxLength(80);
+            entity.Property(i => i.Quantity).HasDefaultValue(1);
             entity.Property(i => i.Location).HasMaxLength(255);
             entity.Property(i => i.IsDeleted).HasDefaultValue(false);
             // Tin bị kiểm duyệt ẩn — mặc định false (hiển thị).
@@ -265,7 +267,12 @@ public class AppDbContext: DbContext
         {
             entity.HasKey(t => t.Id);
             entity.Property(t => t.Amount).HasPrecision(18,2);
+            entity.Property(t => t.Quantity).HasDefaultValue(1);
             entity.Property(t => t.MeetingLocation).IsRequired().HasMaxLength(255);
+            entity.Property(t => t.DeliveryMethod).HasDefaultValue((int)DeliveryMethod.DirectMeetup);
+            entity.Property(t => t.DeliveryCarrier).HasMaxLength(100);
+            entity.Property(t => t.TrackingCode).HasMaxLength(100);
+            entity.Property(t => t.InspectionNote).HasMaxLength(500);
             entity.Property(t => t.CancelReason).HasMaxLength(500);
 
             // Index phục vụ lọc theo trạng thái / loại / thời điểm tạo.

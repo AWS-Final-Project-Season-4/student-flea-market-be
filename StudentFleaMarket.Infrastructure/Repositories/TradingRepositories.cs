@@ -197,7 +197,17 @@ public class TransactionRepository : EfRepository<Transaction>, ITransactionRepo
         => DbSet.AnyAsync(t =>
             t.ItemId == itemId
             && (t.Status == (int)TransactionStatus.Pending
-                || t.Status == (int)TransactionStatus.Accepted), ct);
+                || t.Status == (int)TransactionStatus.Accepted
+                || t.Status == (int)TransactionStatus.Delivering), ct);
+
+    public Task<int> GetPendingQuantityForItemAsync(Guid itemId, CancellationToken ct = default)
+        => DbSet.Where(t =>
+            t.ItemId == itemId
+            && (t.Status == (int)TransactionStatus.Pending
+                || t.Status == (int)TransactionStatus.Accepted
+                || t.Status == (int)TransactionStatus.Delivering
+                || t.Status == (int)TransactionStatus.AwaitingConfirmation))
+            .SumAsync(t => t.Quantity, ct);
 
     public Task<Transaction?> GetByExchangeRequestAsync(Guid exchangeRequestId, CancellationToken ct = default)
         => DbSet.FirstOrDefaultAsync(t => t.ExchangeRequestId == exchangeRequestId, ct);

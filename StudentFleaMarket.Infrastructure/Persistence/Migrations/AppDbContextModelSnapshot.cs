@@ -328,6 +328,10 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<int>("CategoryId")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Color")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
                     b.Property<int>("Condition")
                         .HasColumnType("integer");
 
@@ -373,6 +377,11 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("Price")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
+
+                    b.Property<int>("Quantity")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
 
                     b.Property<Guid>("SellerId")
                         .HasColumnType("uuid");
@@ -868,11 +877,24 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DeliveryCarrier")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("DeliveryMethod")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
                     b.Property<Guid?>("ExchangeRequestId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("InitiatorId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("InspectionNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<Guid>("ItemId")
                         .HasColumnType("uuid");
@@ -888,8 +910,17 @@ namespace StudentFleaMarket.Infrastructure.Persistence.Migrations
                     b.Property<double?>("MeetingLongitude")
                         .HasColumnType("double precision");
 
+                    b.Property<int>("Quantity")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<string>("TrackingCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int>("Type")
                         .HasColumnType("integer");
