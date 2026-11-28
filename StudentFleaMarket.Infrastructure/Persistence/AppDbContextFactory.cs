@@ -56,8 +56,9 @@ public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
             if (!string.IsNullOrWhiteSpace(fromConfig))
                 return fromConfig;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[AppDbContextFactory] Không đọc được config của API, dùng fallback: {ex.GetType().Name}: {ex.Message}");
             // Không tìm thấy file config -> dùng fallback bên dưới.
         }
 
@@ -84,10 +85,7 @@ public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
         // Đọc trực tiếp file này để lấy chuỗi kết nối có mật khẩu.
         var secretsFile = FindUserSecretsFile(ApiUserSecretsId);
         if (secretsFile is not null)
-        {
-            using var stream = File.OpenRead(secretsFile);
-            builder.AddJsonStream(stream);
-        }
+            builder.AddJsonFile(secretsFile, optional: true, reloadOnChange: false);
 
         return builder.Build();
     }
@@ -111,15 +109,24 @@ public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
     /// </summary>
     private static string? FindApiProjectDirectory()
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-
-        while (dir is not null)
+        // `dotnet ef` chạy qua ef.dll trong thư mục công cụ (~/.dotnet/tools/.store/...),
+        // nên AppContext.BaseDirectory KHÔNG nằm trong repo. Thư mục làm việc hiện tại
+        // (--working-dir) mới là repo, nên tìm từ đó trước.
+        foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
         {
-            var candidate = Path.Combine(dir.FullName, "StudentFleaMarket.API");
-            if (Directory.Exists(candidate) && File.Exists(Path.Combine(candidate, "StudentFleaMarket.API.csproj")))
-                return candidate;
+            var dir = new DirectoryInfo(start);
 
-            dir = dir.Parent;
+            while (dir is not null)
+            {
+                if (File.Exists(Path.Combine(dir.FullName, "StudentFleaMarket.API.csproj")))
+                    return dir.FullName;
+
+                var candidate = Path.Combine(dir.FullName, "StudentFleaMarket.API");
+                if (File.Exists(Path.Combine(candidate, "StudentFleaMarket.API.csproj")))
+                    return candidate;
+
+                dir = dir.Parent;
+            }
         }
 
         return null;
