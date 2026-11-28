@@ -21,6 +21,12 @@ public class EmailOptions
     /// khi chưa cấu hình SMTP thật).
     /// </summary>
     public bool LogOnly { get; set; } = true;
+
+    /// <summary>
+    /// Dev safety net: when real SMTP sending fails, still write the message to the log
+    /// so OTP codes are not lost. Keep false in production (logs would contain codes).
+    /// </summary>
+    public bool LogOnFailure { get; set; } = false;
 }
 
 public class EmailSender : IEmailSender
@@ -52,9 +58,16 @@ public class EmailSender : IEmailSender
                 : new NetworkCredential(_options.Username, _options.Password)
         };
 
+        // Gmail (and most SMTP relays) reject a From address that differs from the authenticated account.
+        // When FromEmail was left at its placeholder, send as the SMTP user instead.
+        var fromEmail = !string.IsNullOrWhiteSpace(_options.Username)
+                        && _options.FromEmail.EndsWith(".local", StringComparison.OrdinalIgnoreCase)
+            ? _options.Username
+            : _options.FromEmail;
+
         using var message = new MailMessage
         {
-            From = new MailAddress(_options.FromEmail, _options.FromName),
+            From = new MailAddress(fromEmail, _options.FromName),
             Subject = subject,
             Body = body,
             IsBodyHtml = isHtml,
@@ -62,7 +75,16 @@ public class EmailSender : IEmailSender
         };
         message.To.Add(new MailAddress(to));
 
-        await client.SendMailAsync(message, ct);
+        try
+        {
+            await client.SendMailAsync(message, ct);
+        }
+        catch (Exception ex) when (_options.LogOnFailure)
+        {
+            _logger.LogWarning(ex,
+                "[EMAIL-LOG fallback] SMTP failed. To={To} | Subject={Subject} | Body={Body}",
+                to, subject, isHtml ? StripHtml(body) : body);
+        }
     }
 
     public Task SendOtpAsync(string to, string fullName, string code, CancellationToken ct = default)

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Amazon.Lambda.AspNetCoreServer.Hosting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -9,10 +10,31 @@ using StudentFleaMarket.API.Middleware;
 using StudentFleaMarket.Application.Common;
 using StudentFleaMarket.Application.Common.Interfaces;
 using StudentFleaMarket.Infrastructure.DependencyInjection;
+using StudentFleaMarket.Infrastructure.Media;
 using StudentFleaMarket.Infrastructure.Persistence;
 using StudentFleaMarket.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ------------------------------------------------------- Secrets from AWS SSM
+// Trên AWS, secret (connection string, JWT key, mật khẩu SMTP, secret của header
+// X-Origin-Verify) nằm ở SSM Parameter Store dạng SecureString, KHÔNG nằm trong biến
+// môi trường Lambda. SSM_CONFIG_PATH (vd: /student-market/dev/api) do api.yaml đặt;
+// mỗi tham số <path>/Jwt/SecretKey ánh xạ thành key cấu hình "Jwt:SecretKey".
+// Nạp sau biến môi trường nên giá trị SSM được ưu tiên. Chạy local không đặt biến này
+// thì bỏ qua (dùng user-secrets / appsettings như cũ).
+var ssmConfigPath = Environment.GetEnvironmentVariable("SSM_CONFIG_PATH");
+if (!string.IsNullOrWhiteSpace(ssmConfigPath))
+{
+    // Không optional: thiếu quyền / thiếu tham số thì cold start lỗi ngay, dễ thấy hơn
+    // là chạy tiếp với cấu hình rỗng.
+    builder.Configuration.AddSystemsManager(ssmConfigPath);
+}
+
+// ------------------------------------------------------------ AWS Lambda hosting
+// Khi chạy trong Lambda (sau API Gateway HTTP API) adapter thay Kestrel bằng
+// Lambda runtime. Chạy local / ngoài Lambda thì lệnh này không làm gì.
+builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 
 // ---------------------------------------------------------------- Configuration
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
@@ -42,6 +64,7 @@ else
 
 // --------------------------------------------------------- Application services
 builder.Services.AddApplicationServices();
+builder.Services.AddMediaStorage(builder.Configuration);
 
 // ---------------------------------------------------------------------- Auth
 var jwtSection = builder.Configuration.GetSection("Jwt");
@@ -252,18 +275,35 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
+// Cors:AllowedOrigins: mảng JSON hoặc chuỗi phân tách bằng dấu phẩy
+// (vd. env Cors__AllowedOrigins=https://app.example.com,https://admin.example.com).
+// Để trống -> cho phép mọi origin (giữ hành vi cũ cho local/dev).
+var corsSection = builder.Configuration.GetSection("Cors:AllowedOrigins");
+var corsOrigins = (corsSection.Value?.Split(',') ?? corsSection.Get<string[]>() ?? [])
+    .Select(o => o.Trim())
+    .Where(o => o.Length > 0)
+    .ToArray();
+
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy => policy
-        .AllowAnyOrigin()
-        .AllowAnyMethod()
-        .AllowAnyHeader());
+    options.AddPolicy("AllowAll", policy =>
+    {
+        if (corsOrigins.Length == 0)
+            policy.AllowAnyOrigin();
+        else
+            policy.WithOrigins(corsOrigins).AllowCredentials();
+
+        policy.AllowAnyMethod().AllowAnyHeader();
+    });
 });
 
 var app = builder.Build();
 
 // ---------------------------------------------------------------- Middleware
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+// Chỉ nhận /api/* đi qua CloudFront (+ AWS WAF): chặn gọi thẳng URL API Gateway.
+// Bật bằng OriginVerify:Enforce=true; tắt thì không làm gì (local / giai đoạn chuyển).
+app.UseMiddleware<OriginVerifyMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {
@@ -379,7 +419,7 @@ if (!builder.Configuration.GetValue<bool>("SkipDatabaseSeed"))
         {
             using var scope = app.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            await DemoDataSeeder.SeedAsync(db);
+            await DemoDataSeeder.SeedAsync(db, builder.Configuration[DemoDataSeeder.DemoPasswordKey] ?? string.Empty);
             app.Logger.LogInformation("Demo has been loaded (users + sample listings).");
         }
         catch (Exception ex)

@@ -484,3 +484,8 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# AWS SAM build output and extra env files
+.aws-sam/
+.env.*
+!.env.example

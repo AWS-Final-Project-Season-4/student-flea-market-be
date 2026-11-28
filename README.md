@@ -104,14 +104,14 @@ Migration `AddItemCode` thêm cột `Items.ItemCode` (8 ký tự, unique) — m�
 
 Khi chạy ở môi trường **Development**, API tự động nạp dữ liệu mẫu để test nhanh các chức năng tìm kiếm / đăng bán / gỡ bán.
 
-**Tài khoản demo** (mật khẩu chung: `123456`, email đã xác thực sẵn — không cần OTP):
+**Tài khoản demo** (mật khẩu chung: giá trị `Seed:DemoPassword`, email đã xác thực sẵn — không cần OTP):
 
 | Username | Email | Họ tên | Vai trò |
 |----------|-------|--------|---------|
 | `minh` | `minh@sv.edu.vn` | Nguyễn Minh | Sinh viên — chủ nhiều tin nhất |
 | `linh` | `linh@sv.edu.vn` | Trần Linh | Sinh viên |
 | `tu` | `tu@sv.edu.vn` | Lê Tu | Sinh viên |
-| `admin` | `admin@sv.edu.vn` | Quản trị viên | Admin — mật khẩu `admin123` |
+| `admin` | `admin@sv.edu.vn` | Quản trị viên | Admin — mật khẩu `<Seed:AdminPassword>` |
 
 **Dữ liệu mẫu**: 25 tin đăng trải đều 9 danh mục, ưu tiên các tình huống để test:
 - Nhiều mức giá (0đ tặng → 5.000.000đ) và độ mới khác nhau
@@ -222,9 +222,9 @@ Có **4 vai trò** (lưu trong cột `Users."Role"`):
 | Role | Giá trị | Đăng nhập bằng | Ghi chú |
 |------|---------|----------------|---------|
 | **User** | `0` | Email (và username nếu đã đặt) | Đăng ký tự do qua `/api/Auth/register` |
-| **Admin** | `1` | Email (và username nếu đã đặt) | Seed sẵn: `admin` / `admin123` — email `admin@sv.edu.vn` |
+| **Admin** | `1` | Email (và username nếu đã đặt) | Seed sẵn: `admin` / `<Seed:AdminPassword>` — email `admin@sv.edu.vn` |
 | **AiService** | `2` | **API key** (header `X-Api-Key`) | Dịch vụ AI: kiểm duyệt, gợi ý sản phẩm… Không đăng nhập bằng email/password |
-| **Moderator** | `3` | Email (và username nếu đã đặt) | Kiểm duyệt viên — chia sẻ công việc với Admin. Seed sẵn: `moderator` / `moderator123` |
+| **Moderator** | `3` | Email (và username nếu đã đặt) | Kiểm duyệt viên — chia sẻ công việc với Admin. Seed sẵn: `moderator` / `<Seed:ModeratorPassword>` |
 
 > 🔒 **Tên vai trò** dùng cho `[Authorize(Roles = "...")]` nằm ở **một nguồn duy nhất**: `RoleNames` (Domain/Common/RoleNames.cs).
 > Trước đây logic này bị nhân bản ở 4 nơi → dễ quên khi thêm role mới.
@@ -350,7 +350,7 @@ Dự án **không có API cấp / gỡ quyền quản trị** — vai trò Admin
 
 | Cách | Mô tả |
 |------|-------|
-| Tài khoản `admin` mặc định | Được `DatabaseSeeder` seed khi khởi tạo (`admin` / `admin123` — nên đổi mật khẩu sau lần đăng nhập đầu) |
+| Tài khoản `admin` mặc định | Được `DatabaseSeeder` seed khi khởi tạo (`admin` / `<Seed:AdminPassword>` — nên đổi mật khẩu sau lần đăng nhập đầu) |
 | Gán trực tiếp trong DB | `UPDATE "Users" SET "Role" = 1 WHERE "Email" = '...'` |
 
 > 🔒 **Lý do bỏ tính năng này:** không có đường leo thang quyền — Admin nào cũng không thể tự cấp quyền admin cho người khác, và không ai tự thu hồi được quyền admin của người khác.
@@ -421,7 +421,7 @@ POST /api/Auth/register
 POST /api/Auth/login
 {
   "identifier": "admin",
-  "password": "admin123"
+  "password": "<Seed:AdminPassword>"
 }
 ```
 
@@ -750,7 +750,7 @@ curl "http://localhost:5033/api/Items/search?sortBy=most_favorited&exchangeOnly=
 # 2. Đăng nhập demo user
 curl -X POST http://localhost:5033/api/Auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"minh@sv.edu.vn","password":"123456"}'
+  -d '{"email":"minh@sv.edu.vn","password":"<Seed:DemoPassword>"}'
 
 # 3. Đăng bán tin
 curl -X POST http://localhost:5033/api/Items/sell \
@@ -915,9 +915,16 @@ Mỗi tin đăng có **hai định danh**, nằm cùng trên bảng `Items`:
 
 | Username | Email | Mật khẩu | Vai trò |
 |----------|-------|----------|---------|
-| `admin` | `admin@sv.edu.vn` | `admin123` | Admin (đã xác thực email) |
+| `admin` | `admin@sv.edu.vn` | `<Seed:AdminPassword>` | Admin (đã xác thực email) |
 
-> ⚠️ **Đổi mật khẩu `admin123` sau lần đăng nhập đầu tiên.**
+> 🔐 **Mật khẩu seed không nằm trong source code.** Đặt bằng user-secrets khi dev:
+> ```bash
+> dotnet user-secrets --project StudentFleaMarket.API set "Seed:AdminPassword" "<mật-khẩu-mạnh>"
+> dotnet user-secrets --project StudentFleaMarket.API set "Seed:ModeratorPassword" "<mật-khẩu-mạnh>"
+> dotnet user-secrets --project StudentFleaMarket.API set "Seed:DemoPassword" "<mật-khẩu-demo>"
+> ```
+> Khi deploy dùng biến môi trường `Seed__AdminPassword`, `Seed__ModeratorPassword`, `Seed__DemoPassword`.
+> Thiếu `Seed:AdminPassword`/`Seed:ModeratorPassword` → bỏ qua tạo tài khoản đó (log cảnh báo); thiếu `Seed:DemoPassword` → bỏ qua dữ liệu demo.
 > Seed chạy tự động khi khởi động API và là **idempotent** — không ghi đè dữ liệu đã có.
 > Bỏ qua seed: đặt `"SkipDatabaseSeed": true` trong `appsettings.Development.json`.
 
@@ -1081,7 +1088,7 @@ Pending (Đang xử lý) ──complete──> Completed (Hoàn thành)   → ti
 # 1. Đăng nhập 2 demo user
 curl -X POST http://localhost:5033/api/Auth/login \
   -H "Content-Type: application/json" \
-  -d '{"identifier":"minh","password":"123456"}'
+  -d '{"identifier":"minh","password":"<Seed:DemoPassword>"}'
 
 # 2. Xem các yêu cầu đổi đồ đã nhận / đã gửi
 curl "http://localhost:5033/api/ExchangeRequests?direction=incoming" \
@@ -1241,7 +1248,7 @@ ws://localhost:5033/hubs/chat?access_token=<jwt>
 # 1. Đăng nhập 2 demo user (người mua + người bán)
 curl -X POST http://localhost:5033/api/Auth/login \
   -H "Content-Type: application/json" \
-  -d '{"identifier":"minh","password":"123456"}'
+  -d '{"identifier":"minh","password":"<Seed:DemoPassword>"}'
 
 # 2. Mở hội thoại chat về 1 món đồ (ItemId lấy từ GET /api/Items/search)
 curl -X POST http://localhost:5033/api/Chat/conversations \
@@ -1279,3 +1286,37 @@ curl -X POST http://localhost:5033/api/Chat/conversations/<conversationId>/read 
 
 > 💡 Muốn đếm tin chưa đọc theo **tổng** (badge toàn app) dùng `GET /api/Chat/unread-count` hoặc lắng nghe event `NotifyUnreadCount` qua SignalR.
 
+
+---
+
+## 🖼️ Upload ảnh tin đăng (S3 presigned POST + Lambda ImageProcessor)
+
+- `POST /api/Items/sell/{id}/images/presign` — cần JWT, chỉ chủ tin. Body: `{ "files": [{ "fileName", "contentType", "sizeBytes" }] }`.
+  Chỉ nhận `image/jpeg`, `image/png`, `image/webp`. Mặc định tối đa 10 MB/ảnh và 8 ảnh/tin.
+- Response trả `uploadUrl` + `formFields`. Client append **toàn bộ** `formFields` vào `FormData`, append ảnh với key `file`,
+  rồi POST thẳng lên S3. Policy đã ký cố định object key, MIME type, dung lượng khai báo và thời hạn.
+- Ảnh gốc vào `raw/users/{userId}/items/{itemId}/{uploadId}.{ext}`. Lambda `StudentFleaMarket.ImageProcessor`
+  (trigger `ObjectCreated` trên `raw/`) tạo `large.webp` và `thumbnail.webp` trong `processed/items/{itemId}/{uploadId}/`.
+- `POST /api/Items/sell/{id}/images/confirm` — sau khi POST lên S3 thành công, gửi `{ "objectKeys": ["<objectKey từ presign>"] }`.
+  API kiểm tra key thuộc đúng user + tin, `HEAD` object trên S3 (tồn tại, đúng dung lượng), rồi ghi vào bảng `ItemImage`
+  với `ImageUrl = <base>/processed/items/{itemId}/{uploadId}/large.webp` (base = `CloudFrontBaseUrl`, hoặc LocalStack khi dev).
+  Ảnh đầu tiên thành ảnh chính nếu tin chưa có. Gọi lại với cùng key không tạo trùng. Response trả thêm `thumbnailUrl`.
+  Lambda xử lý bất đồng bộ nên `large.webp` có thể chưa có ngay vài giây sau khi confirm — FE nên retry/hiển thị placeholder.
+
+Cấu hình nằm trong section `MediaStorage`:
+
+| Môi trường | Thiết lập |
+|---|---|
+| Development | `appsettings.Development.json` trỏ LocalStack `http://localhost:4566`, bucket `student-market-local-images`, path-style. Client S3 dùng credential giả, không đọc AWS profile thật. |
+| AWS | Để trống `MediaStorage__ServiceUrl`, `MediaStorage__ForcePathStyle=false`, đặt `MediaStorage__BucketName`, `MediaStorage__Region`, `MediaStorage__CloudFrontBaseUrl`. Credential lấy từ default chain / execution role, **không** để access key trong appsettings. |
+
+> API sẽ không khởi động nếu `MediaStorage:BucketName` trống.
+
+Chạy LocalStack từ thư mục gốc workspace (`-SkipImagePipeline` nếu chỉ cần S3):
+
+```powershell
+.\aws\localstack\Initialize-LocalStack.ps1
+dotnet run --project .\student-flea-market-be\StudentFleaMarket.API --launch-profile http
+```
+
+Stack media khi deploy: `../aws/iac/media-pipeline.yaml` (build/lint bằng AWS SAM).

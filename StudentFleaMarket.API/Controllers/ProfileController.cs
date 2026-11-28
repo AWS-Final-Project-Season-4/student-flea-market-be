@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StudentFleaMarket.Application.Common.Interfaces;
 using StudentFleaMarket.Application.DTOs.Profile;
+using StudentFleaMarket.Application.Media;
 
 namespace StudentFleaMarket.API.Controllers;
 
@@ -14,10 +15,12 @@ namespace StudentFleaMarket.API.Controllers;
 public class ProfileController : ControllerBase
 {
     private readonly IProfileService _profileService;
+    private readonly IAvatarUploadService _avatarUploadService;
 
-    public ProfileController(IProfileService profileService)
+    public ProfileController(IProfileService profileService, IAvatarUploadService avatarUploadService)
     {
         _profileService = profileService;
+        _avatarUploadService = avatarUploadService;
     }
 
     /// <summary>
@@ -51,6 +54,36 @@ public class ProfileController : ControllerBase
         var userId = GetUserId();
         var result = await _profileService.ChangePasswordAsync(userId, request, ct);
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Xin presigned POST để upload ảnh đại diện thẳng lên S3 (jpg/png/webp, tối đa 5 MB).
+    /// Lambda ImageProcessor cắt vuông và tạo <c>large.webp</c> (512px) + <c>thumbnail.webp</c> (128px).
+    /// </summary>
+    [HttpPost("avatar/presign")]
+    public async Task<IActionResult> PresignAvatar([FromBody] PresignAvatarRequest request, CancellationToken ct)
+    {
+        var result = await _avatarUploadService.CreatePresignedUploadAsync(GetUserId(), request, ct);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Xác nhận ảnh đại diện đã upload xong và lưu URL vào hồ sơ.
+    /// Body: <c>{ "objectKey": "raw/users/{userId}/avatars/{uploadId}.jpg" }</c> — lấy từ response presign.
+    /// </summary>
+    [HttpPost("avatar/confirm")]
+    public async Task<IActionResult> ConfirmAvatar([FromBody] ConfirmAvatarRequest request, CancellationToken ct)
+    {
+        var profile = await _avatarUploadService.ConfirmUploadAsync(GetUserId(), request, ct);
+        return Ok(profile);
+    }
+
+    /// <summary>Gỡ ảnh đại diện.</summary>
+    [HttpDelete("avatar")]
+    public async Task<IActionResult> RemoveAvatar(CancellationToken ct)
+    {
+        var profile = await _avatarUploadService.RemoveAsync(GetUserId(), ct);
+        return Ok(profile);
     }
 
     private Guid GetUserId()

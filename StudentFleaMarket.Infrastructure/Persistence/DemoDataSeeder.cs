@@ -17,13 +17,17 @@ namespace StudentFleaMarket.Infrastructure.Persistence;
 public static class DemoDataSeeder
 {
     /// <summary>
-    /// Mật khẩu chung cho các tài khoản demo: "123456"
+    /// Cấu hình chứa mật khẩu chung cho các tài khoản demo (user-secrets / biến môi trường
+    /// <c>Seed__DemoPassword</c>). Không để mật khẩu trong source code.
     /// </summary>
-    private const string DemoPassword = "123456";
+    public const string DemoPasswordKey = "Seed:DemoPassword";
 
-    public static async Task SeedAsync(AppDbContext db, CancellationToken ct = default)
+    public static async Task SeedAsync(AppDbContext db, string demoPassword, CancellationToken ct = default)
     {
-        var (users, items) = await SeedUsersAsync(db, ct);
+        if (string.IsNullOrWhiteSpace(demoPassword))
+            throw new InvalidOperationException($"Chưa cấu hình {DemoPasswordKey} cho tài khoản demo.");
+
+        var (users, items) = await SeedUsersAsync(db, demoPassword, ct);
         await SeedItemsAsync(db, users, items, ct);
         await SeedFavoritesAsync(db, users, items, ct);
         await SeedTradingAsync(db, users, ct);
@@ -32,6 +36,7 @@ public static class DemoDataSeeder
     // ------------------------------------------------------------- USERS
     private static async Task<(Dictionary<string, ApplicationUser> Users, List<Item> Items)> SeedUsersAsync(
         AppDbContext db,
+        string demoPassword,
         CancellationToken ct)
     {
         var hasher = new Services.PasswordHasher();
@@ -57,7 +62,7 @@ public static class DemoDataSeeder
                     FullName = s.FullName,
                     Email = s.Email,
                     Username = s.Username,
-                    PasswordHash = hasher.Hash(DemoPassword),
+                    PasswordHash = hasher.Hash(demoPassword),
                     PhoneNumber = "09" + Random.Shared.Next(10000000, 99999999),
                     SchoolName = s.School,
                     StudentCode = s.Code,

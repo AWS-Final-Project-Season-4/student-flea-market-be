@@ -4,3 +4,29 @@ GET {{StudentFleaMarket.API_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+### Presign upload ảnh tin đăng (chỉ chủ tin)
+POST {{StudentFleaMarket.API_HostAddress}}/api/Items/sell/replace-with-item-id/images/presign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "files": [
+    {
+      "fileName": "textbook-cover.jpg",
+      "contentType": "image/jpeg",
+      "sizeBytes": 1048576
+    }
+  ]
+}
+
+### Xác nhận ảnh đã upload -> lưu vào ItemImage
+POST {{StudentFleaMarket.API_HostAddress}}/api/Items/sell/replace-with-item-id/images/confirm
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "objectKeys": [
+    "raw/users/replace-with-user-id/items/replace-with-item-id/replace-with-upload-id.jpg"
+  ]
+}

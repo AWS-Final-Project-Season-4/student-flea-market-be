@@ -53,12 +53,40 @@ public class AuthService : IAuthService
         var email = request.Email.Trim().ToLowerInvariant();
         var username = NormalizeUsername(request.Username);
 
-        if (await _userRepo.ExistsAsync(u => u.Email == email, ct))
+        var existing = await _userRepo.FirstOrDefaultAsync(u => u.Email == email, ct);
+
+        // Email đã xác minh = tài khoản thật đã thuộc về ai đó → không cho đăng ký đè.
+        if (existing is not null && existing.IsEmailVerified)
             throw new ConflictException("Email already exists.", "EMAIL_EXISTS");
 
-        // Username là định danh đăng nhập — phải unique toàn hệ thống.
-        if (username is not null && await _userRepo.ExistsAsync(u => u.Username == username, ct))
+        // Username là định danh đăng nhập — phải unique toàn hệ thống (trừ chính bản ghi chưa xác minh đang đăng ký lại).
+        if (username is not null && await _userRepo.ExistsAsync(u => u.Username == username && (existing == null || u.Id != existing.Id), ct))
             throw new ConflictException("Username already exists. Please choose another name.", "USERNAME_EXISTS");
+
+        // Email đã đăng ký nhưng CHƯA xác minh (VD: người dùng tải lại trang trước khi nhập mã):
+        // cho đăng ký lại — cập nhật thông tin, đặt lại mật khẩu và gửi mã mới. An toàn vì vẫn phải có
+        // quyền truy cập hộp thư mới xác minh được, nên không ai chiếm được email của người khác.
+        if (existing is not null)
+        {
+            existing.FullName = request.FullName.Trim();
+            existing.Username = username;
+            existing.PasswordHash = _passwordHasher.Hash(request.Password);
+            existing.PhoneNumber = request.PhoneNumber?.Trim();
+            existing.SchoolName = request.SchoolName?.Trim();
+            existing.StudentCode = request.StudentCode?.Trim();
+            existing.UpdatedAt = DateTime.UtcNow;
+
+            _userRepo.Update(existing);
+            await _userRepo.SaveChangesAsync(ct);
+            await CreateAndSendVerificationCodeAsync(existing, VerificationCodePurpose.EmailVerification, ct);
+
+            return new RegisterResultDto
+            {
+                Message = "This email is registered but not verified yet. A new verification code has been sent.",
+                User = MapUser(existing),
+                VerificationEmail = existing.Email
+            };
+        }
 
         var user = new ApplicationUser
         {

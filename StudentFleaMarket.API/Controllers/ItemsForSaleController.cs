@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StudentFleaMarket.Application.Common.Interfaces;
 using StudentFleaMarket.Application.DTOs.Items;
+using StudentFleaMarket.Application.Media;
 using StudentFleaMarket.Domain.Common;
 
 namespace StudentFleaMarket.API.Controllers;
@@ -19,10 +20,12 @@ namespace StudentFleaMarket.API.Controllers;
 public class ItemsForSaleController : ControllerBase
 {
     private readonly IItemService _itemService;
+    private readonly IMediaUploadService _mediaUploadService;
 
-    public ItemsForSaleController(IItemService itemService)
+    public ItemsForSaleController(IItemService itemService, IMediaUploadService mediaUploadService)
     {
         _itemService = itemService;
+        _mediaUploadService = mediaUploadService;
     }
 
     /// <summary>
@@ -69,6 +72,29 @@ public class ItemsForSaleController : ControllerBase
     {
         var userId = GetUserId();
         var result = await _itemService.GetBySellerAsync(userId, userId, query, ct);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Xin presigned POST để upload ảnh tin đăng thẳng lên S3 (chỉ chủ tin).
+    /// Ảnh gốc vào <c>raw/</c>, Lambda ImageProcessor tạo bản WebP vào <c>processed/</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/images/presign")]
+    public async Task<IActionResult> PresignImages(Guid id, [FromBody] PresignItemImagesRequest request, CancellationToken ct)
+    {
+        var result = await _mediaUploadService.CreatePresignedUploadsAsync(GetUserId(), id, request, ct);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Xác nhận ảnh đã upload xong lên S3 và lưu vào tin đăng (bảng ItemImage).
+    /// Body: <c>{ "objectKeys": ["raw/users/.../items/{id}/{uploadId}.jpg"] }</c> — lấy từ response presign.
+    /// Ảnh đầu tiên của tin (nếu chưa có ảnh chính) được đặt làm ảnh chính. Gọi lại an toàn (idempotent).
+    /// </summary>
+    [HttpPost("{id:guid}/images/confirm")]
+    public async Task<IActionResult> ConfirmImages(Guid id, [FromBody] ConfirmItemImagesRequest request, CancellationToken ct)
+    {
+        var result = await _mediaUploadService.ConfirmUploadsAsync(GetUserId(), id, request, ct);
         return Ok(result);
     }
 
