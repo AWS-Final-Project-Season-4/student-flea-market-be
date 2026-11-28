@@ -57,22 +57,24 @@ public static class ItemCodeHelper
 
         var normalized = categorySlugOrName.Trim().ToLowerInvariant();
 
-        if (normalized.Contains("book") || normalized.Contains("sách") || normalized.Contains("textbooks") || normalized.Contains("giáo trình"))
+        if (normalized.Contains("sach") || normalized.Contains("book") || normalized.Contains("sách") || normalized.Contains("textbooks") || normalized.Contains("giáo trình"))
             return "BK";
-        if (normalized.Contains("electr") || normalized.Contains("điện tử") || normalized.Contains("tech"))
+        if (normalized.Contains("dien-tu") || normalized.Contains("electr") || normalized.Contains("điện tử") || normalized.Contains("tech"))
             return "EL";
-        if (normalized.Contains("dorm") || normalized.Contains("ktx") || normalized.Contains("đời sống") || normalized.Contains("living"))
+        if (normalized.Contains("do-gia-dung") || normalized.Contains("gia dụng") || normalized.Contains("dorm") || normalized.Contains("ktx") || normalized.Contains("đời sống") || normalized.Contains("living"))
             return "DL";
-        if (normalized.Contains("fashion") || normalized.Contains("thời trang") || normalized.Contains("quần áo"))
+        if (normalized.Contains("thoi-trang") || normalized.Contains("fashion") || normalized.Contains("thời trang") || normalized.Contains("quần áo"))
             return "FA";
-        if (normalized.Contains("station") || normalized.Contains("học tập") || normalized.Contains("dụng cụ") || normalized.Contains("study"))
+        if (normalized.Contains("dung-cu") || normalized.Contains("hoc-tap") || normalized.Contains("tai-lieu") || normalized.Contains("station") || normalized.Contains("học tập") || normalized.Contains("dụng cụ") || normalized.Contains("study"))
             return "ST";
-        if (normalized.Contains("beauty") || normalized.Contains("sức khỏe") || normalized.Contains("sắc đẹp") || normalized.Contains("health"))
+        if (normalized.Contains("suc-khoe") || normalized.Contains("the-thao") || normalized.Contains("beauty") || normalized.Contains("sức khỏe") || normalized.Contains("thể thao") || normalized.Contains("sắc đẹp") || normalized.Contains("health"))
             return "BH";
-        if (normalized.Contains("food") || normalized.Contains("ăn") || normalized.Contains("uống") || normalized.Contains("drink"))
+        if (normalized.Contains("do-an") || normalized.Contains("food") || normalized.Contains("ăn") || normalized.Contains("uống") || normalized.Contains("drink"))
             return "FD";
         if (normalized.Contains("phu-kien-xe") || normalized.Contains("phụ kiện xe") || normalized.Contains("vehicle"))
             return "VA";
+        if (normalized.Contains("nhac-cu") || normalized.Contains("nhạc cụ") || normalized.Contains("music"))
+            return "MC";
 
         return DefaultPrefix;
     }
