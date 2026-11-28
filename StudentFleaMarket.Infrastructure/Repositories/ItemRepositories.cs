@@ -141,20 +141,24 @@ public class ItemRepository : EfRepository<Item>, IItemRepository
 
     public Task<Item?> GetByCodeAsync(string code, CancellationToken ct = default)
     {
+        // Mã cũ (seed/demo) có thể chứa O/I/L mà Normalize() đổi thành 0/1,
+        // nên so khớp cả dạng đã chuẩn hoá lẫn dạng gốc (chỉ viết hoa, bỏ '-').
         var normalized = ItemCodeHelper.Normalize(code);
+        var raw = ItemCodeHelper.CleanRaw(code);
 
         return DbSet
             .AsNoTracking()
             .Include(i => i.Category)
             .Include(i => i.Seller)
             .Include(i => i.Images)
-            .FirstOrDefaultAsync(i => i.ItemCode == normalized, ct);
+            .FirstOrDefaultAsync(i => i.ItemCode == normalized || i.ItemCode == raw, ct);
     }
 
     public Task<bool> ExistsByCodeAsync(string code, CancellationToken ct = default)
     {
         var normalized = ItemCodeHelper.Normalize(code);
-        return DbSet.AnyAsync(i => i.ItemCode == normalized, ct);
+        var raw = ItemCodeHelper.CleanRaw(code);
+        return DbSet.AnyAsync(i => i.ItemCode == normalized || i.ItemCode == raw, ct);
     }
 
     public Task<int> CountByCategoryAsync(int categoryId, CancellationToken ct = default)

@@ -609,7 +609,7 @@ CreatedAt = DateTime.UtcNow
         // Đối chiếu mã hàng — phát hiện tráo hàng ngay tại chỗ.
         if (enteredCode is not null)
         {
-            var codeMatched = string.Equals(enteredCode, expectedItem.ItemCode, StringComparison.OrdinalIgnoreCase);
+            var codeMatched = ItemCodeHelper.Matches(enteredCode, expectedItem.ItemCode);
 
             if (!codeMatched && receivedOk)
                 throw new ValidationException(
@@ -800,10 +800,9 @@ CreatedAt = DateTime.UtcNow
 
         bool? codeMatched = null;
         if (myConfirmation?.ItemCodeVerified is not null && expectedItem is not null)
-            codeMatched = string.Equals(
+            codeMatched = ItemCodeHelper.Matches(
                 myConfirmation.ItemCodeVerified,
-                expectedItem.ItemCode,
-                StringComparison.OrdinalIgnoreCase);
+                expectedItem.ItemCode);
 
         var isCompleted = (TransactionStatus)tx.Status == TransactionStatus.Completed;
 

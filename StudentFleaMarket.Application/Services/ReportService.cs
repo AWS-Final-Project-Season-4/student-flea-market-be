@@ -204,7 +204,7 @@ public class ReportService : IReportService
 
         var code = ItemCodeHelper.Normalize(request.ItemCode);
 
-        return await _itemRepo.GetByCodeAsync(code, ct)
+        return await _itemRepo.GetByCodeAsync(request.ItemCode, ct)
             ?? throw new NotFoundException(
                 $"Không tìm thấy tin đăng có mã \"{code}\".",
                 "ITEM_CODE_NOT_FOUND");

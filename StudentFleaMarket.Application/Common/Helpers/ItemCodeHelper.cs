@@ -121,6 +121,19 @@ public static class ItemCodeHelper
     /// - Tự động sửa lỗi nhầm lẫn người dùng: 'O' -> '0', 'I'/'L' -> '1'.
     /// - Nếu người dùng chỉ nhập 6 ký tự hậu tố, tự động thêm tiền tố "IT".
     /// </summary>
+    /// <summary>So khớp 2 mã sau khi chuẩn hoá cả hai vế (an toàn với mã cũ chứa O/I/L).</summary>
+    public static bool Matches(string? a, string? b)
+    {
+        var na = Normalize(a);
+        return na.Length > 0 && na == Normalize(b);
+    }
+
+    /// <summary>Mã gốc chỉ viết hoa + bỏ '-', KHÔNG đổi O/I/L (để tra cứu mã cũ).</summary>
+    public static string CleanRaw(string? code) =>
+        string.IsNullOrWhiteSpace(code)
+            ? string.Empty
+            : code.Trim().ToUpperInvariant().Replace("-", string.Empty);
+
     public static string Normalize(string? code)
     {
         if (string.IsNullOrWhiteSpace(code))
